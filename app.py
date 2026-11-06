@@ -32,12 +32,12 @@ def safe_print(*args, **kwargs):
 # ==========================================
 # Configuration (Token & Owner ID)
 # ==========================================
-TOKEN = "8461404016:AAFkYC5h0leiOrR9hVF7bBBkbD1ky0n9epk"
+TOKEN = os.environ.get("BOT_TOKEN", "8663470581:AAHix3_GFnfc8xPXpv_0dFYmG656icsQspc")
 BASE_URL = f"https://api.telegram.org/bot{TOKEN}"
 FILE_URL = f"https://api.telegram.org/file/bot{TOKEN}/"
 
 OWNER_ID = 7897443102
-BOT_USERNAME = "@StockNumberZoneBoT"
+BOT_USERNAME = "@ARF_NumberZone_Bot"
 BASE_DIR = os.path.dirname(os.path.abspath(__file__))
 DB_FILE = os.path.join(BASE_DIR, "bot_data.json")
 USERS_FILE = os.path.join(BASE_DIR, "users.json")
@@ -146,6 +146,12 @@ bot_settings = {
     "fj_channels": [], 
     "stex_keys": [], 
     "voltx_keys": [],
+    "zenex_keys": [],
+    "mino_keys": [],
+    "zenex_services": {},
+    "mino_services": {},
+    "zenex_search_countries": [],
+    "mino_search_countries": [],
     "search_countries": [],
     "stex_services": {},
     "voltx_services": {},
@@ -187,8 +193,12 @@ number_batches = {}
 used_numbers_list = []
 stex_assigned_numbers = {} 
 voltx_assigned_numbers = {}
+zenex_assigned_numbers = {}
+mino_assigned_numbers = {}
 STEX_BASE_URL = "https://api.2oo9.cloud/MXS47FLFX0U/tness/@public/api"
 VOLTX_BASE_URL = "https://api.2oo9.cloud/MXS47FLFX0U/tnevs/@public/api"
+ZENEX_BASE_URL = "https://api.zenexnetwork.com"
+MINO_BASE_URL = "https://minosms.com"
 total_uploaded_stats = 0
 total_assigned_stats = 0
 processed_otps = set()
@@ -995,7 +1005,7 @@ def forward_otp_to_groups(display_msg, otp, num=None):
             safe_print(f"OTP forward error to {chat_id}: {e}")
 
 def load_db():
-    global bot_settings, number_batches, used_numbers_list, total_uploaded_stats, total_assigned_stats, recent_traffic, users_db, withdrawals_db, stex_assigned_numbers, voltx_assigned_numbers
+    global bot_settings, number_batches, used_numbers_list, total_uploaded_stats, total_assigned_stats, recent_traffic, users_db, withdrawals_db, stex_assigned_numbers, voltx_assigned_numbers, zenex_assigned_numbers, mino_assigned_numbers
     
     if os.path.exists(DB_FILE):
         try:
@@ -1026,6 +1036,8 @@ def load_db():
                 recent_traffic = data.get("recent_traffic", [])
                 stex_assigned_numbers = data.get("stex_assigned_numbers", data.get("nexa_assigned_numbers", {}))
                 voltx_assigned_numbers = data.get("voltx_assigned_numbers", {})
+                zenex_assigned_numbers = data.get("zenex_assigned_numbers", {})
+                mino_assigned_numbers = data.get("mino_assigned_numbers", {})
             print("✅ Database Loaded!")
             avail = sum(len(b.get("numbers", [])) for b in number_batches.values())
             print(f"📦 Local stock: {avail} numbers in {len(number_batches)} batches | Stex services: {len(bot_settings.get('stex_services', {}))} | Voltx: {len(bot_settings.get('voltx_services', {}))}")
@@ -1065,7 +1077,9 @@ def save_local_db():
         "total_assigned_stats": total_assigned_stats,
         "recent_traffic": recent_traffic,
         "stex_assigned_numbers": stex_assigned_numbers,
-        "voltx_assigned_numbers": voltx_assigned_numbers
+        "voltx_assigned_numbers": voltx_assigned_numbers,
+        "zenex_assigned_numbers": zenex_assigned_numbers,
+        "mino_assigned_numbers": mino_assigned_numbers
     }
     try:
         with open(DB_FILE, "w", encoding='utf-8') as f:
@@ -1872,6 +1886,8 @@ def system_settings_keyboard():
     return {"inline_keyboard": [
         [{"text": "Stex Control", "icon_custom_emoji_id": "5336972142066047577", "callback_data": "stex_control", "style": "success"},
          {"text": "Voltx Control", "icon_custom_emoji_id": "5336972142066047577", "callback_data": "voltx_control", "style": "primary"}],
+        [{"text": "Zenex Control", "icon_custom_emoji_id": "5336972142066047577", "callback_data": "zenex_control", "style": "danger"},
+         {"text": "Mino Control", "icon_custom_emoji_id": "5336972142066047577", "callback_data": "mino_control", "style": "success"}],
         [{"text": "Force Join System", "icon_custom_emoji_id": "5420517437885943844", "callback_data": "manage_fj", "style": "primary"},
          {"text": "Admin Management", "icon_custom_emoji_id": "5420145051336485498", "callback_data": "manage_admins", "style": "danger"}],
         [{"text": "OTP Group", "icon_custom_emoji_id": "5190447043545438788", "callback_data": "manage_otp_groups", "style": "danger"},
@@ -2050,6 +2066,24 @@ def voltx_control_keyboard():
          {"text": "View/Del Keys", "icon_custom_emoji_id": "5422557736330106570", "callback_data": "view_voltx_keys", "style": "danger"}],
         [{"text": "Manage Voltx Services", "icon_custom_emoji_id": "5192739271886282680", "callback_data": "manage_voltx_srv", "style": "success"}],
         [{"text": "Search Country", "icon_custom_emoji_id": "5336972142066047577", "callback_data": "voltx_search_country", "style": "primary"}],
+        [{"text": "Back", "icon_custom_emoji_id": "5267490665117275176", "callback_data": "system_settings", "style": "primary"}]
+    ]}
+
+def zenex_control_keyboard():
+    return {"inline_keyboard": [
+        [{"text": "Add Zenex Key", "icon_custom_emoji_id": "5420323438508155202", "callback_data": "add_zenex_key", "style": "success"},
+         {"text": "View/Del Keys", "icon_custom_emoji_id": "5422557736330106570", "callback_data": "view_zenex_keys", "style": "danger"}],
+        [{"text": "Manage Zenex Services", "icon_custom_emoji_id": "5192739271886282680", "callback_data": "manage_zenex_srv", "style": "success"}],
+        [{"text": "Search Country", "icon_custom_emoji_id": "5336972142066047577", "callback_data": "zenex_search_country", "style": "primary"}],
+        [{"text": "Back", "icon_custom_emoji_id": "5267490665117275176", "callback_data": "system_settings", "style": "primary"}]
+    ]}
+
+def mino_control_keyboard():
+    return {"inline_keyboard": [
+        [{"text": "Add Mino Key", "icon_custom_emoji_id": "5420323438508155202", "callback_data": "add_mino_key", "style": "success"},
+         {"text": "View/Del Keys", "icon_custom_emoji_id": "5422557736330106570", "callback_data": "view_mino_keys", "style": "danger"}],
+        [{"text": "Manage Mino Services", "icon_custom_emoji_id": "5192739271886282680", "callback_data": "manage_mino_srv", "style": "success"}],
+        [{"text": "Search Country", "icon_custom_emoji_id": "5336972142066047577", "callback_data": "mino_search_country", "style": "primary"}],
         [{"text": "Back", "icon_custom_emoji_id": "5267490665117275176", "callback_data": "system_settings", "style": "primary"}]
     ]}
 
@@ -2615,6 +2649,24 @@ def handle_message(msg):
             del temp_data[chat_id]
             return
 
+        elif state == "wait_for_add_zenex_key" and text:
+            bot_settings["zenex_keys"].append(text.strip())
+            save_db()
+            delete_message(chat_id, msg["message_id"])
+            edit_message(chat_id, temp_data[chat_id]["msg_id"], render_body_text(f"✅ Zenex API Key Added! Total Keys: {len(bot_settings.get('zenex_keys', []))}"), reply_markup=zenex_control_keyboard())
+            del user_states[chat_id]
+            del temp_data[chat_id]
+            return
+
+        elif state == "wait_for_add_mino_key" and text:
+            bot_settings["mino_keys"].append(text.strip())
+            save_db()
+            delete_message(chat_id, msg["message_id"])
+            edit_message(chat_id, temp_data[chat_id]["msg_id"], render_body_text(f"✅ Mino API Key Added! Total Keys: {len(bot_settings.get('mino_keys', []))}"), reply_markup=mino_control_keyboard())
+            del user_states[chat_id]
+            del temp_data[chat_id]
+            return
+
         elif state == "wait_for_add_sc" and text:
             code = text.strip().replace("+", "")
             if "search_countries" not in bot_settings: bot_settings["search_countries"] = []
@@ -2638,6 +2690,28 @@ def handle_message(msg):
             save_db()
             delete_message(chat_id, msg["message_id"])
             handle_callback({"message": {"chat": {"id": chat_id}, "message_id": temp_data[chat_id]["msg_id"]}, "data": "voltx_search_country", "id": "internal"})
+            del user_states[chat_id]
+            del temp_data[chat_id]
+            return
+
+        elif state == "wait_for_add_zsc" and text:
+            code = text.strip().replace("+", "")
+            if "zenex_search_countries" not in bot_settings: bot_settings["zenex_search_countries"] = []
+            bot_settings["zenex_search_countries"].append(code)
+            save_db()
+            delete_message(chat_id, msg["message_id"])
+            handle_callback({"message": {"chat": {"id": chat_id}, "message_id": temp_data[chat_id]["msg_id"]}, "data": "zenex_search_country", "id": "internal"})
+            del user_states[chat_id]
+            del temp_data[chat_id]
+            return
+
+        elif state == "wait_for_add_msc" and text:
+            code = text.strip().replace("+", "")
+            if "mino_search_countries" not in bot_settings: bot_settings["mino_search_countries"] = []
+            bot_settings["mino_search_countries"].append(code)
+            save_db()
+            delete_message(chat_id, msg["message_id"])
+            handle_callback({"message": {"chat": {"id": chat_id}, "message_id": temp_data[chat_id]["msg_id"]}, "data": "mino_search_country", "id": "internal"})
             del user_states[chat_id]
             del temp_data[chat_id]
             return
@@ -2713,6 +2787,80 @@ def handle_message(msg):
                 
             delete_message(chat_id, msg["message_id"])
             handle_callback({"message": {"chat": {"id": chat_id}, "message_id": temp_data[chat_id]["msg_id"]}, "data": f"vx_cnt_{srv}_{cnt}", "id": "internal"})
+            del user_states[chat_id]
+            return
+
+        elif state == "wait_zx_srv_name" and text:
+            srv = text.strip().upper()
+            if "zenex_services" not in bot_settings: bot_settings["zenex_services"] = {}
+            if srv not in bot_settings["zenex_services"]: bot_settings["zenex_services"][srv] = {}
+            save_db()
+            delete_message(chat_id, msg["message_id"])
+            handle_callback({"message": {"chat": {"id": chat_id}, "message_id": temp_data[chat_id]["msg_id"]}, "data": "manage_zenex_srv", "id": "internal"})
+            del user_states[chat_id]
+            return
+
+        elif state == "wait_zx_cnt_name" and text:
+            cnt = text.strip().upper()
+            srv = temp_data[chat_id]["srv"]
+            if cnt not in bot_settings["zenex_services"][srv]: bot_settings["zenex_services"][srv][cnt] = []
+            save_db()
+            delete_message(chat_id, msg["message_id"])
+            handle_callback({"message": {"chat": {"id": chat_id}, "message_id": temp_data[chat_id]["msg_id"]}, "data": f"zx_srv_{srv}", "id": "internal"})
+            del user_states[chat_id]
+            return
+
+        elif state == "wait_zx_addr" and text:
+            srv, cnt = temp_data[chat_id]["srv"], temp_data[chat_id]["cnt"]
+            new_range = text.strip().replace("+", "")
+            
+            if new_range not in bot_settings["zenex_services"][srv][cnt]:
+                bot_settings["zenex_services"][srv][cnt].append(new_range)
+                if "zenex_search_countries" not in bot_settings:
+                    bot_settings["zenex_search_countries"] = []
+                if new_range not in bot_settings["zenex_search_countries"]:
+                    bot_settings["zenex_search_countries"].append(new_range)
+                save_db()
+                
+            delete_message(chat_id, msg["message_id"])
+            handle_callback({"message": {"chat": {"id": chat_id}, "message_id": temp_data[chat_id]["msg_id"]}, "data": f"zx_cnt_{srv}_{cnt}", "id": "internal"})
+            del user_states[chat_id]
+            return
+
+        elif state == "wait_mn_srv_name" and text:
+            srv = text.strip().upper()
+            if "mino_services" not in bot_settings: bot_settings["mino_services"] = {}
+            if srv not in bot_settings["mino_services"]: bot_settings["mino_services"][srv] = {}
+            save_db()
+            delete_message(chat_id, msg["message_id"])
+            handle_callback({"message": {"chat": {"id": chat_id}, "message_id": temp_data[chat_id]["msg_id"]}, "data": "manage_mino_srv", "id": "internal"})
+            del user_states[chat_id]
+            return
+
+        elif state == "wait_mn_cnt_name" and text:
+            cnt = text.strip().upper()
+            srv = temp_data[chat_id]["srv"]
+            if cnt not in bot_settings["mino_services"][srv]: bot_settings["mino_services"][srv][cnt] = []
+            save_db()
+            delete_message(chat_id, msg["message_id"])
+            handle_callback({"message": {"chat": {"id": chat_id}, "message_id": temp_data[chat_id]["msg_id"]}, "data": f"mn_srv_{srv}", "id": "internal"})
+            del user_states[chat_id]
+            return
+
+        elif state == "wait_mn_addr" and text:
+            srv, cnt = temp_data[chat_id]["srv"], temp_data[chat_id]["cnt"]
+            new_range = text.strip().replace("+", "")
+            
+            if new_range not in bot_settings["mino_services"][srv][cnt]:
+                bot_settings["mino_services"][srv][cnt].append(new_range)
+                if "mino_search_countries" not in bot_settings:
+                    bot_settings["mino_search_countries"] = []
+                if new_range not in bot_settings["mino_search_countries"]:
+                    bot_settings["mino_search_countries"].append(new_range)
+                save_db()
+                
+            delete_message(chat_id, msg["message_id"])
+            handle_callback({"message": {"chat": {"id": chat_id}, "message_id": temp_data[chat_id]["msg_id"]}, "data": f"mn_cnt_{srv}_{cnt}", "id": "internal"})
             del user_states[chat_id]
             return
 
@@ -2834,16 +2982,11 @@ def handle_message(msg):
                         found_indices.append((b_id, idx))
             
             fetched_nums = []
-            is_stex_used = False
-            is_voltx_used = False
+            api_source = None
             if not found_indices:
-                stex_allowed = bot_settings.get("search_countries", [])
-                voltx_allowed = bot_settings.get("voltx_search_countries", [])
+                allowed_provs = allowed_providers_for_query(query)
                 
-                is_stex_allowed = any(query.startswith(str(c)) for c in stex_allowed) if stex_allowed else False
-                is_voltx_allowed = any(query.startswith(str(c)) for c in voltx_allowed) if voltx_allowed else False
-                
-                if not is_stex_allowed and not is_voltx_allowed:
+                if not allowed_provs:
                     if wait_msg_id: delete_message(chat_id, wait_msg_id)
                     send_message(chat_id, render_body_text("❌ This country code is not allowed!"), reply_markup=main_menu(chat_id))
                     del user_states[chat_id]
@@ -2854,11 +2997,9 @@ def handle_message(msg):
                 req_count = bot_settings.get("num_req", 1)
                 fetched_nums, api_source = fetch_numbers_from_api(
                     query, chat_id,
-                    prefer_voltx=bool(is_voltx_allowed and not is_stex_allowed),
+                    prefer=allowed_provs[0],
                     req_count=req_count,
                 )
-                is_voltx_used = api_source == "voltx"
-                is_stex_used = api_source == "stex"
                 if fetched_nums:
                     total_assigned_stats += len(fetched_nums)
                         
@@ -2894,9 +3035,7 @@ def handle_message(msg):
                 emoji_id = get_flag_emoji_id(display_num)
                 kb.append([{"text": f"{display_num}", "icon_custom_emoji_id": emoji_id, "copy_text": {"text": display_num}, "style": "primary"}])
                 
-            stex_ext = "_stex" if is_stex_used else ""
-            vtx_ext = "_vtx" if is_voltx_used else ""
-            ext = stex_ext if stex_ext else vtx_ext
+            ext = PROVIDER_SUFFIX.get(api_source, "")
             
             kb.append([{"text": "Change Number", "icon_custom_emoji_id": "5465368548702446780", "callback_data": f"c_n_s_{query}{ext}", "style": "danger"},
                        {"text": "OTP Group", "icon_custom_emoji_id": "5190447043545438788", "url": bot_settings["otp_link"], "style": "primary"}])
@@ -3117,7 +3256,9 @@ def handle_message(msg):
         local_srvs = set([b["service"] for b in number_batches.values() if b.get("numbers")])
         stex_srvs = set(bot_settings.get("stex_services", {}).keys())
         voltx_srvs = set(bot_settings.get("voltx_services", {}).keys())
-        all_services = local_srvs.union(stex_srvs).union(voltx_srvs)
+        zx_srvs = set(bot_settings.get("zenex_services", {}).keys())
+        mn_srvs = set(bot_settings.get("mino_services", {}).keys())
+        all_services = local_srvs.union(stex_srvs).union(voltx_srvs).union(zx_srvs).union(mn_srvs)
         total_local = sum(len(b.get("numbers", [])) for b in number_batches.values())
         
         if not all_services:
@@ -3195,6 +3336,10 @@ def expire_previous_number(chat_id):
                 del stex_assigned_numbers[num]
             if num in voltx_assigned_numbers:
                 del voltx_assigned_numbers[num]
+            if num in zenex_assigned_numbers:
+                del zenex_assigned_numbers[num]
+            if num in mino_assigned_numbers:
+                del mino_assigned_numbers[num]
         save_db()
         
         kb = [[{"text": "Number Expired", "icon_custom_emoji_id": "5336997731481193790", "callback_data": "ignore", "style": "danger"}]]
@@ -3214,6 +3359,8 @@ def _known_services():
             srvs.add(str(b["service"]))
     srvs.update(bot_settings.get("stex_services", {}).keys())
     srvs.update(bot_settings.get("voltx_services", {}).keys())
+    srvs.update(bot_settings.get("zenex_services", {}).keys())
+    srvs.update(bot_settings.get("mino_services", {}).keys())
     return srvs
 
 def parse_service_country_callback(data, prefix):
@@ -3288,73 +3435,143 @@ def count_local_stock(service=None, country=None):
         total += sum(1 for n in (b.get("numbers") or []) if isinstance(n, dict) and n.get("num"))
     return total
 
+API_PROVIDERS = ["stex", "voltx", "zenex", "mino"]
+PROVIDER_SUFFIX = {"stex": "_stex", "voltx": "_vtx", "zenex": "_zx", "mino": "_mn"}
+PROVIDER_NAMES = {"stex": "Stex", "voltx": "Voltx", "zenex": "Zenex", "mino": "Mino"}
+
+def provider_keys(label):
+    return bot_settings.get(f"{label}_keys", []) or []
+
+def provider_services(label):
+    return bot_settings.get(f"{label}_services", {}) or {}
+
+def provider_search_countries(label):
+    k = "search_countries" if label == "stex" else f"{label}_search_countries"
+    return bot_settings.get(k, []) or []
+
+def provider_assigned(label):
+    return {"stex": stex_assigned_numbers, "voltx": voltx_assigned_numbers,
+            "zenex": zenex_assigned_numbers, "mino": mino_assigned_numbers}[label]
+
+def allowed_providers_for_query(query):
+    """Providers whose allowed-range list matches this search query."""
+    q = str(query)
+    return [l for l in API_PROVIDERS if any(q.startswith(str(c)) for c in provider_search_countries(l))]
+
+def split_provider_suffix(data):
+    """'c_n_s_224_INSTAGRAM_zx' -> ('c_n_s_224_INSTAGRAM', 'zenex')."""
+    for label, suf in PROVIDER_SUFFIX.items():
+        if data.endswith(suf):
+            return data[:-len(suf)], label
+    return data, None
+
 def get_api_ranges_for(service, country):
-    """Return (stex_ranges, voltx_ranges) with normalized country lookup."""
+    """Return {provider: [ranges]} with normalized country lookup."""
     svc_n = _norm_key(service)
     cty_n = _norm_key(country)
+    out = {l: [] for l in API_PROVIDERS}
+    for label in API_PROVIDERS:
+        for srv, countries in provider_services(label).items():
+            if _norm_key(srv) != svc_n:
+                continue
+            for cnt, ranges in (countries or {}).items():
+                if (not cty_n or _norm_key(cnt) == cty_n or cty_n in _norm_key(cnt) or _norm_key(cnt) in cty_n) and ranges:
+                    out[label].extend(ranges)
+    return out
 
-    stex_ranges, voltx_ranges = [], []
-    for srv, countries in bot_settings.get("stex_services", {}).items():
-        if _norm_key(srv) != svc_n:
-            continue
-        for cnt, ranges in (countries or {}).items():
-            if (not cty_n or _norm_key(cnt) == cty_n or cty_n in _norm_key(cnt) or _norm_key(cnt) in cty_n) and ranges:
-                stex_ranges.extend(ranges)
-    for srv, countries in bot_settings.get("voltx_services", {}).items():
-        if _norm_key(srv) != svc_n:
-            continue
-        for cnt, ranges in (countries or {}).items():
-            if (not cty_n or _norm_key(cnt) == cty_n or cty_n in _norm_key(cnt) or _norm_key(cnt) in cty_n) and ranges:
-                voltx_ranges.extend(ranges)
-    return stex_ranges, voltx_ranges
+def _digits_only(v):
+    return re.sub(r"\D", "", str(v or ""))
 
-def fetch_numbers_from_api(query, chat_id, prefer_voltx=False, req_count=None):
-    """Try Voltx/Stex APIs. Short timeouts so UI never hangs forever."""
+def _find_number_in(obj, depth=0):
+    """Find a phone number in an unknown JSON response."""
+    if depth > 4:
+        return ""
+    if isinstance(obj, dict):
+        for k in ("full_number", "no_plus_number", "number", "phone_number", "phone", "msisdn", "num", "national_number"):
+            if k in obj:
+                d = _digits_only(obj.get(k))
+                if len(d) >= 7:
+                    return d
+        for v in obj.values():
+            if isinstance(v, (dict, list)):
+                d = _find_number_in(v, depth + 1)
+                if d:
+                    return d
+    elif isinstance(obj, list):
+        for v in obj:
+            d = _find_number_in(v, depth + 1)
+            if d:
+                return d
+    return ""
+
+def _pad_range(rng):
+    r = str(rng).strip()
+    return r if "X" in r.upper() else r + "XXX"
+
+def _request_number(label, api_key, rng, timeout):
+    """Ask one provider for ONE number. Returns digits-only string or ''."""
+    if label in ("stex", "voltx"):
+        base = STEX_BASE_URL if label == "stex" else VOLTX_BASE_URL
+        res = requests.post(f"{base}/getnum", json={"rid": str(rng)}, headers={"mauthapi": api_key}, timeout=timeout)
+        d = res.json()
+        if d.get("meta", {}).get("code") == 200 and d.get("data"):
+            return _digits_only(d["data"].get("no_plus_number") or d["data"].get("national_number"))
+        return ""
+    if label == "zenex":
+        payload = {"range": _pad_range(rng), "is_national": False, "remove_plus": True}
+        res = requests.post(f"{ZENEX_BASE_URL}/v1/getnum", json=payload, headers={"mapikey": api_key}, timeout=timeout)
+        d = res.json()
+        if d.get("meta", {}).get("code") == 200 and d.get("data"):
+            return _digits_only(d["data"].get("full_number") or d["data"].get("number"))
+        safe_print(f"zenex getnum rejected: {str(d)[:200]}")
+        return ""
+    if label == "mino":
+        payload = {"api_key": api_key, "rid": _pad_range(rng), "national_format": 0, "remove_plus": 1}
+        res = requests.post(f"{MINO_BASE_URL}/getnumber", json=payload, timeout=timeout)
+        d = res.json()
+        num = _find_number_in(d)
+        if not num:
+            safe_print(f"mino getnumber rejected: {str(d)[:200]}")
+        return num
+    return ""
+
+def fetch_numbers_from_api(query, chat_id, prefer_voltx=False, req_count=None, prefer=None):
+    """Try Stex/Voltx/Zenex/Mino. Preferred provider first. Short timeouts so UI never hangs."""
     if req_count is None:
         req_count = bot_settings.get("num_req", 1)
     req_count = max(1, min(int(req_count or 1), 3))
     fetched = []
     source = None
-    timeout = 3
+    timeout = 6
 
-    def try_provider(keys, base_url, label):
-        nonlocal source
+    if prefer is None:
+        prefer = "voltx" if prefer_voltx else "stex"
+    order = [prefer] + [l for l in API_PROVIDERS if l != prefer]
+
+    for label in order:
+        keys = provider_keys(label)
         if not keys:
-            return
+            continue
         for _ in range(max(1, req_count - len(fetched))):
+            if len(fetched) >= req_count:
+                break
             got = False
             for api_key in keys[:3]:
                 try:
-                    headers = {"mauthapi": api_key}
-                    res = requests.post(f"{base_url}/getnum", json={"rid": str(query)}, headers=headers, timeout=timeout)
-                    resp_data = res.json()
-                    if resp_data.get("meta", {}).get("code") == 200 and resp_data.get("data"):
-                        num_str = str(resp_data["data"].get("no_plus_number", "") or "").replace("+", "")
-                        if not num_str:
-                            num_str = str(resp_data["data"].get("national_number", "") or "").replace("+", "")
-                        if num_str:
-                            fetched.append(num_str)
-                            if label == "voltx":
-                                voltx_assigned_numbers[num_str] = chat_id
-                            else:
-                                stex_assigned_numbers[num_str] = chat_id
-                            source = label
-                            got = True
-                            break
+                    num_str = _request_number(label, api_key, query, timeout)
                 except Exception as e:
                     safe_print(f"{label} getnum error: {e}")
                     continue
+                if num_str and num_str not in fetched:
+                    fetched.append(num_str)
+                    provider_assigned(label)[num_str] = chat_id
+                    source = source or label
+                    got = True
+                    break
             if not got:
                 break
-
-    if prefer_voltx:
-        try_provider(bot_settings.get("voltx_keys", []), VOLTX_BASE_URL, "voltx")
-        if len(fetched) < req_count:
-            try_provider(bot_settings.get("stex_keys", []), STEX_BASE_URL, "stex")
-    else:
-        try_provider(bot_settings.get("stex_keys", []), STEX_BASE_URL, "stex")
-        if len(fetched) < req_count:
-            try_provider(bot_settings.get("voltx_keys", []), VOLTX_BASE_URL, "voltx")
+        if len(fetched) >= req_count:
+            break
 
     return fetched, source
 
@@ -4393,6 +4610,276 @@ def handle_callback(call):
         save_db()
         handle_callback({"message": {"chat": {"id": chat_id}, "message_id": msg_id}, "data": f"vx_srv_{srv}", "id": call["id"]})
 
+    elif data == "zenex_control":
+        edit_message(chat_id, msg_id, render_body_text(f"⚡ <b>Zenex Control Panel</b>\n\nTotal API Keys: {len(bot_settings.get('zenex_keys', []))}\nManage your Zenex API Keys below:"), reply_markup=zenex_control_keyboard())
+
+    elif data == "add_zenex_key":
+        user_states[chat_id] = "wait_for_add_zenex_key"
+        temp_data[chat_id] = {"msg_id": msg_id}
+        edit_message(chat_id, msg_id, render_body_text("📝 Send the new Zenex API Key:"), reply_markup={"inline_keyboard": [[{"text": "Cancel", "icon_custom_emoji_id": "5267490665117275176", "callback_data": "zenex_control", "style": "danger"}]]})
+
+    elif data == "view_zenex_keys":
+        kb = []
+        for idx, key in enumerate(bot_settings.get("zenex_keys", [])):
+            safe_name = key[:10] + "..." if len(key)>10 else key
+            kb.append([{"text": f"Delete {safe_name}", "icon_custom_emoji_id": "5420130255174145507", "callback_data": f"del_ztx_{idx}", "style": "danger"}])
+        kb.append([{"text": "Back", "icon_custom_emoji_id": "5267490665117275176", "callback_data": "zenex_control", "style": "primary"}])
+        edit_message(chat_id, msg_id, render_body_text("🗑 <b>Select Zenex Key to Delete:</b>"), reply_markup={"inline_keyboard": kb})
+
+    elif data.startswith("del_ztx_"):
+        idx = int(data.split("_")[2])
+        if 0 <= idx < len(bot_settings["zenex_keys"]):
+            del bot_settings["zenex_keys"][idx]
+            save_db()
+            answer_callback(call["id"], "✅ Zenex Key Deleted!", show_alert=True)
+            handle_callback({"message": {"chat": {"id": chat_id}, "message_id": msg_id}, "data": "view_zenex_keys", "id": call["id"]})
+
+    elif data == "zenex_search_country":
+        kb = []
+        for idx, c in enumerate(bot_settings.get("zenex_search_countries", [])):
+            kb.append([{"text": f"Delete {c}", "icon_custom_emoji_id": "5420130255174145507", "callback_data": f"del_zsc_{idx}", "style": "danger"}])
+        kb.append([{"text": "Add Country Code", "icon_custom_emoji_id": "5420323438508155202", "callback_data": "add_zenex_search_country", "style": "success"}])
+        kb.append([{"text": "Back", "icon_custom_emoji_id": "5267490665117275176", "callback_data": "zenex_control", "style": "primary"}])
+        edit_message(chat_id, msg_id, render_body_text("🌍 <b>Zenex Allowed Ranges:</b>\nOnly these ranges/codes will be allowed in Zenex Search Number."), reply_markup={"inline_keyboard": kb})
+
+    elif data == "add_zenex_search_country":
+        user_states[chat_id] = "wait_for_add_zsc"
+        temp_data[chat_id] = {"msg_id": msg_id}
+        edit_message(chat_id, msg_id, render_body_text("📝 Send the Zenex Range Code (e.g. 26134):"), reply_markup={"inline_keyboard": [[{"text": "Cancel", "icon_custom_emoji_id": "5267490665117275176", "callback_data": "zenex_search_country", "style": "danger"}]]})
+
+    elif data.startswith("del_zsc_"):
+        idx = int(data.split("_")[2])
+        if 0 <= idx < len(bot_settings["zenex_search_countries"]):
+            del bot_settings["zenex_search_countries"][idx]
+            save_db()
+            answer_callback(call["id"], "✅ Zenex Range Deleted!", show_alert=True)
+            handle_callback({"message": {"chat": {"id": chat_id}, "message_id": msg_id}, "data": "zenex_search_country", "id": call["id"]})
+
+    elif data == "manage_zenex_srv":
+        kb = []
+        srvs = bot_settings.get("zenex_services", {})
+        apps_db = bot_settings.get("premium_apps", {})
+        for srv in srvs:
+            emoji_id = "5257969839313526622"
+            for app_key, app_data in apps_db.items():
+                if srv.upper() == app_key or srv.upper() in app_key or app_key in srv.upper():
+                    if "id" in app_data: emoji_id = app_data["id"]; break
+            kb.append([{"text": f"{srv}", "icon_custom_emoji_id": emoji_id, "callback_data": f"zx_srv_{srv}", "style": "primary"}])
+        kb.append([{"text": "Add New Service", "icon_custom_emoji_id": "5420323438508155202", "callback_data": "zx_add_srv", "style": "success"}])
+        kb.append([{"text": "Back", "icon_custom_emoji_id": "5267490665117275176", "callback_data": "zenex_control", "style": "danger"}])
+        edit_message(chat_id, msg_id, render_body_text("⚡ <b>Zenex Services Manager</b>\nManage your API-based dynamic services below:"), reply_markup={"inline_keyboard": kb})
+
+    elif data == "zx_add_srv":
+        user_states[chat_id] = "wait_zx_srv_name"
+        temp_data[chat_id] = {"msg_id": msg_id}
+        edit_message(chat_id, msg_id, render_body_text("📝 Enter Service Name (e.g. TELEGRAM):"), reply_markup=get_cancel_kb())
+
+    elif data.startswith("zx_srv_"):
+        srv = data.replace("zx_srv_", "")
+        kb = []
+        countries = bot_settings["zenex_services"].get(srv, {})
+        flags_db = bot_settings.get("premium_flags", {})
+        for c in countries:
+            emoji_id = "5780471598922337683"
+            for flag_code, flag_data in flags_db.items():
+                iso = flag_data.get("iso", "").upper()
+                name = flag_data.get("name", "").upper()
+                if c.upper() == iso or c.upper() == name or c.upper() in name or name in c.upper():
+                    if "id" in flag_data: emoji_id = flag_data["id"]; break
+            kb.append([{"text": f"{c} ({len(countries[c])} Ranges)", "icon_custom_emoji_id": emoji_id, "callback_data": f"zx_cnt_{srv}_{c}", "style": "primary"}])
+        kb.append([{"text": "Add Country", "icon_custom_emoji_id": "5420323438508155202", "callback_data": f"zx_add_cnt_{srv}", "style": "success"}])
+        kb.append([{"text": "Delete Service", "icon_custom_emoji_id": "5422557736330106570", "callback_data": f"zx_del_srv_{srv}", "style": "danger"}])
+        kb.append([{"text": "Back", "icon_custom_emoji_id": "5267490665117275176", "callback_data": "manage_zenex_srv", "style": "primary"}])
+        edit_message(chat_id, msg_id, render_body_text(f"📂 <b>Service: {srv}</b>\nManage countries for this service:"), reply_markup={"inline_keyboard": kb})
+
+    elif data.startswith("zx_add_cnt_"):
+        srv = data.replace("zx_add_cnt_", "")
+        user_states[chat_id] = "wait_zx_cnt_name"
+        temp_data[chat_id] = {"msg_id": msg_id, "srv": srv}
+        edit_message(chat_id, msg_id, render_body_text(f"🌍 Enter Country Name for <b>{srv}</b> (e.g. BD, INDIA):"), reply_markup=get_cancel_kb())
+
+    elif data.startswith("zx_cnt_"):
+        parts = data.split("_")
+        srv, cnt = parts[2], parts[3]
+        ranges = bot_settings["zenex_services"][srv].get(cnt, [])
+        kb = []
+        row = []
+        for r in ranges:
+            row.append({"text": f"Delete {r}", "icon_custom_emoji_id": "5420130255174145507", "callback_data": f"zx_dr_{srv}_{cnt}_{r}", "style": "danger"})
+            if len(row) == 2:
+                kb.append(row)
+                row = []
+        if row: kb.append(row)
+        kb.append([{"text": "Add Range", "icon_custom_emoji_id": "5420323438508155202", "callback_data": f"zx_addr_{srv}_{cnt}", "style": "success"}])
+        kb.append([{"text": "Delete Entire Country", "icon_custom_emoji_id": "5422557736330106570", "callback_data": f"zx_del_cnt_{srv}_{cnt}", "style": "danger"}])
+        kb.append([{"text": "Back", "icon_custom_emoji_id": "5267490665117275176", "callback_data": f"zx_srv_{srv}", "style": "primary"}])
+        txt = f"📍 <b>Service: {srv} | Country: {cnt}</b>\n\n<b>Total Ranges:</b> {len(ranges)}\n<i>Click on a range below to delete it, or add a new one.</i>"
+        edit_message(chat_id, msg_id, render_body_text(txt), reply_markup={"inline_keyboard": kb})
+
+    elif data.startswith("zx_addr_"):
+        parts = data.split("_")
+        srv, cnt = parts[2], parts[3]
+        user_states[chat_id] = "wait_zx_addr"
+        temp_data[chat_id] = {"msg_id": msg_id, "srv": srv, "cnt": cnt}
+        edit_message(chat_id, msg_id, render_body_text(f"📝 Send the new Range for <b>{cnt}</b> (e.g. 26134):"), reply_markup={"inline_keyboard": [[{"text": "Cancel", "icon_custom_emoji_id": "5267490665117275176", "callback_data": f"zx_cnt_{srv}_{cnt}", "style": "danger"}]]})
+
+    elif data.startswith("zx_dr_"):
+        parts = data.split("_")
+        srv, cnt, rng = parts[2], parts[3], parts[4]
+        if rng in bot_settings["zenex_services"].get(srv, {}).get(cnt, []):
+            bot_settings["zenex_services"][srv][cnt].remove(rng)
+            save_db()
+            answer_callback(call["id"], f"✅ Range {rng} deleted!", show_alert=True)
+        handle_callback({"message": {"chat": {"id": chat_id}, "message_id": msg_id}, "data": f"zx_cnt_{srv}_{cnt}", "id": call["id"]})
+
+    elif data.startswith("zx_del_srv_"):
+        srv = data.replace("zx_del_srv_", "")
+        if srv in bot_settings["zenex_services"]: del bot_settings["zenex_services"][srv]
+        save_db()
+        handle_callback({"message": {"chat": {"id": chat_id}, "message_id": msg_id}, "data": "manage_zenex_srv", "id": call["id"]})
+
+    elif data.startswith("zx_del_cnt_"):
+        parts = data.split("_")
+        srv, cnt = parts[3], parts[4]
+        if cnt in bot_settings["zenex_services"].get(srv, {}): del bot_settings["zenex_services"][srv][cnt]
+        save_db()
+        handle_callback({"message": {"chat": {"id": chat_id}, "message_id": msg_id}, "data": f"zx_srv_{srv}", "id": call["id"]})
+
+    elif data == "mino_control":
+        edit_message(chat_id, msg_id, render_body_text(f"⚡ <b>Mino Control Panel</b>\n\nTotal API Keys: {len(bot_settings.get('mino_keys', []))}\nManage your Mino API Keys below:"), reply_markup=mino_control_keyboard())
+
+    elif data == "add_mino_key":
+        user_states[chat_id] = "wait_for_add_mino_key"
+        temp_data[chat_id] = {"msg_id": msg_id}
+        edit_message(chat_id, msg_id, render_body_text("📝 Send the new Mino API Key:"), reply_markup={"inline_keyboard": [[{"text": "Cancel", "icon_custom_emoji_id": "5267490665117275176", "callback_data": "mino_control", "style": "danger"}]]})
+
+    elif data == "view_mino_keys":
+        kb = []
+        for idx, key in enumerate(bot_settings.get("mino_keys", [])):
+            safe_name = key[:10] + "..." if len(key)>10 else key
+            kb.append([{"text": f"Delete {safe_name}", "icon_custom_emoji_id": "5420130255174145507", "callback_data": f"del_mtx_{idx}", "style": "danger"}])
+        kb.append([{"text": "Back", "icon_custom_emoji_id": "5267490665117275176", "callback_data": "mino_control", "style": "primary"}])
+        edit_message(chat_id, msg_id, render_body_text("🗑 <b>Select Mino Key to Delete:</b>"), reply_markup={"inline_keyboard": kb})
+
+    elif data.startswith("del_mtx_"):
+        idx = int(data.split("_")[2])
+        if 0 <= idx < len(bot_settings["mino_keys"]):
+            del bot_settings["mino_keys"][idx]
+            save_db()
+            answer_callback(call["id"], "✅ Mino Key Deleted!", show_alert=True)
+            handle_callback({"message": {"chat": {"id": chat_id}, "message_id": msg_id}, "data": "view_mino_keys", "id": call["id"]})
+
+    elif data == "mino_search_country":
+        kb = []
+        for idx, c in enumerate(bot_settings.get("mino_search_countries", [])):
+            kb.append([{"text": f"Delete {c}", "icon_custom_emoji_id": "5420130255174145507", "callback_data": f"del_msc_{idx}", "style": "danger"}])
+        kb.append([{"text": "Add Country Code", "icon_custom_emoji_id": "5420323438508155202", "callback_data": "add_mino_search_country", "style": "success"}])
+        kb.append([{"text": "Back", "icon_custom_emoji_id": "5267490665117275176", "callback_data": "mino_control", "style": "primary"}])
+        edit_message(chat_id, msg_id, render_body_text("🌍 <b>Mino Allowed Ranges:</b>\nOnly these ranges/codes will be allowed in Mino Search Number."), reply_markup={"inline_keyboard": kb})
+
+    elif data == "add_mino_search_country":
+        user_states[chat_id] = "wait_for_add_msc"
+        temp_data[chat_id] = {"msg_id": msg_id}
+        edit_message(chat_id, msg_id, render_body_text("📝 Send the Mino Range Code (e.g. 26134):"), reply_markup={"inline_keyboard": [[{"text": "Cancel", "icon_custom_emoji_id": "5267490665117275176", "callback_data": "mino_search_country", "style": "danger"}]]})
+
+    elif data.startswith("del_msc_"):
+        idx = int(data.split("_")[2])
+        if 0 <= idx < len(bot_settings["mino_search_countries"]):
+            del bot_settings["mino_search_countries"][idx]
+            save_db()
+            answer_callback(call["id"], "✅ Mino Range Deleted!", show_alert=True)
+            handle_callback({"message": {"chat": {"id": chat_id}, "message_id": msg_id}, "data": "mino_search_country", "id": call["id"]})
+
+    elif data == "manage_mino_srv":
+        kb = []
+        srvs = bot_settings.get("mino_services", {})
+        apps_db = bot_settings.get("premium_apps", {})
+        for srv in srvs:
+            emoji_id = "5257969839313526622"
+            for app_key, app_data in apps_db.items():
+                if srv.upper() == app_key or srv.upper() in app_key or app_key in srv.upper():
+                    if "id" in app_data: emoji_id = app_data["id"]; break
+            kb.append([{"text": f"{srv}", "icon_custom_emoji_id": emoji_id, "callback_data": f"mn_srv_{srv}", "style": "primary"}])
+        kb.append([{"text": "Add New Service", "icon_custom_emoji_id": "5420323438508155202", "callback_data": "mn_add_srv", "style": "success"}])
+        kb.append([{"text": "Back", "icon_custom_emoji_id": "5267490665117275176", "callback_data": "mino_control", "style": "danger"}])
+        edit_message(chat_id, msg_id, render_body_text("⚡ <b>Mino Services Manager</b>\nManage your API-based dynamic services below:"), reply_markup={"inline_keyboard": kb})
+
+    elif data == "mn_add_srv":
+        user_states[chat_id] = "wait_mn_srv_name"
+        temp_data[chat_id] = {"msg_id": msg_id}
+        edit_message(chat_id, msg_id, render_body_text("📝 Enter Service Name (e.g. TELEGRAM):"), reply_markup=get_cancel_kb())
+
+    elif data.startswith("mn_srv_"):
+        srv = data.replace("mn_srv_", "")
+        kb = []
+        countries = bot_settings["mino_services"].get(srv, {})
+        flags_db = bot_settings.get("premium_flags", {})
+        for c in countries:
+            emoji_id = "5780471598922337683"
+            for flag_code, flag_data in flags_db.items():
+                iso = flag_data.get("iso", "").upper()
+                name = flag_data.get("name", "").upper()
+                if c.upper() == iso or c.upper() == name or c.upper() in name or name in c.upper():
+                    if "id" in flag_data: emoji_id = flag_data["id"]; break
+            kb.append([{"text": f"{c} ({len(countries[c])} Ranges)", "icon_custom_emoji_id": emoji_id, "callback_data": f"mn_cnt_{srv}_{c}", "style": "primary"}])
+        kb.append([{"text": "Add Country", "icon_custom_emoji_id": "5420323438508155202", "callback_data": f"mn_add_cnt_{srv}", "style": "success"}])
+        kb.append([{"text": "Delete Service", "icon_custom_emoji_id": "5422557736330106570", "callback_data": f"mn_del_srv_{srv}", "style": "danger"}])
+        kb.append([{"text": "Back", "icon_custom_emoji_id": "5267490665117275176", "callback_data": "manage_mino_srv", "style": "primary"}])
+        edit_message(chat_id, msg_id, render_body_text(f"📂 <b>Service: {srv}</b>\nManage countries for this service:"), reply_markup={"inline_keyboard": kb})
+
+    elif data.startswith("mn_add_cnt_"):
+        srv = data.replace("mn_add_cnt_", "")
+        user_states[chat_id] = "wait_mn_cnt_name"
+        temp_data[chat_id] = {"msg_id": msg_id, "srv": srv}
+        edit_message(chat_id, msg_id, render_body_text(f"🌍 Enter Country Name for <b>{srv}</b> (e.g. BD, INDIA):"), reply_markup=get_cancel_kb())
+
+    elif data.startswith("mn_cnt_"):
+        parts = data.split("_")
+        srv, cnt = parts[2], parts[3]
+        ranges = bot_settings["mino_services"][srv].get(cnt, [])
+        kb = []
+        row = []
+        for r in ranges:
+            row.append({"text": f"Delete {r}", "icon_custom_emoji_id": "5420130255174145507", "callback_data": f"mn_dr_{srv}_{cnt}_{r}", "style": "danger"})
+            if len(row) == 2:
+                kb.append(row)
+                row = []
+        if row: kb.append(row)
+        kb.append([{"text": "Add Range", "icon_custom_emoji_id": "5420323438508155202", "callback_data": f"mn_addr_{srv}_{cnt}", "style": "success"}])
+        kb.append([{"text": "Delete Entire Country", "icon_custom_emoji_id": "5422557736330106570", "callback_data": f"mn_del_cnt_{srv}_{cnt}", "style": "danger"}])
+        kb.append([{"text": "Back", "icon_custom_emoji_id": "5267490665117275176", "callback_data": f"mn_srv_{srv}", "style": "primary"}])
+        txt = f"📍 <b>Service: {srv} | Country: {cnt}</b>\n\n<b>Total Ranges:</b> {len(ranges)}\n<i>Click on a range below to delete it, or add a new one.</i>"
+        edit_message(chat_id, msg_id, render_body_text(txt), reply_markup={"inline_keyboard": kb})
+
+    elif data.startswith("mn_addr_"):
+        parts = data.split("_")
+        srv, cnt = parts[2], parts[3]
+        user_states[chat_id] = "wait_mn_addr"
+        temp_data[chat_id] = {"msg_id": msg_id, "srv": srv, "cnt": cnt}
+        edit_message(chat_id, msg_id, render_body_text(f"📝 Send the new Range for <b>{cnt}</b> (e.g. 26134):"), reply_markup={"inline_keyboard": [[{"text": "Cancel", "icon_custom_emoji_id": "5267490665117275176", "callback_data": f"mn_cnt_{srv}_{cnt}", "style": "danger"}]]})
+
+    elif data.startswith("mn_dr_"):
+        parts = data.split("_")
+        srv, cnt, rng = parts[2], parts[3], parts[4]
+        if rng in bot_settings["mino_services"].get(srv, {}).get(cnt, []):
+            bot_settings["mino_services"][srv][cnt].remove(rng)
+            save_db()
+            answer_callback(call["id"], f"✅ Range {rng} deleted!", show_alert=True)
+        handle_callback({"message": {"chat": {"id": chat_id}, "message_id": msg_id}, "data": f"mn_cnt_{srv}_{cnt}", "id": call["id"]})
+
+    elif data.startswith("mn_del_srv_"):
+        srv = data.replace("mn_del_srv_", "")
+        if srv in bot_settings["mino_services"]: del bot_settings["mino_services"][srv]
+        save_db()
+        handle_callback({"message": {"chat": {"id": chat_id}, "message_id": msg_id}, "data": "manage_mino_srv", "id": call["id"]})
+
+    elif data.startswith("mn_del_cnt_"):
+        parts = data.split("_")
+        srv, cnt = parts[3], parts[4]
+        if cnt in bot_settings["mino_services"].get(srv, {}): del bot_settings["mino_services"][srv][cnt]
+        save_db()
+        handle_callback({"message": {"chat": {"id": chat_id}, "message_id": msg_id}, "data": f"mn_srv_{srv}", "id": call["id"]})
+
     elif data == "manage_fj":
         edit_message(chat_id, msg_id, render_body_text(f"{PEM['link']} <b>FORCE JOIN SYSTEM</b>\nManage channels below:"), reply_markup=fj_settings_keyboard())
 
@@ -4632,7 +5119,12 @@ def handle_callback(call):
         for srv, countries in bot_settings.get("voltx_services", {}).items():
             if str(srv).upper().strip() == svc_u:
                 voltx_cnts.update(countries.keys())
-        all_countries = local_cnts.union(stex_cnts).union(voltx_cnts)
+        extra_cnts = set()
+        for _lbl in ("zenex", "mino"):
+            for srv, countries in provider_services(_lbl).items():
+                if str(srv).upper().strip() == svc_u:
+                    extra_cnts.update(countries.keys())
+        all_countries = local_cnts.union(stex_cnts).union(voltx_cnts).union(extra_cnts)
         
         c_msg = bot_settings["custom_messages"].get("select_country", {})
         raw_txt = c_msg.get("text", "📌 Select a country for {service}:").replace("{service}", service)
@@ -4672,19 +5164,14 @@ def handle_callback(call):
             expire_previous_number(chat_id)
 
             if data.startswith("c_n_s_"):
-                is_voltx_req = data.endswith("_vtx")
-                is_stex_req = data.endswith("_stex")
-                clean_data = data[:-4] if is_voltx_req else (data[:-5] if is_stex_req else data)
+                clean_data, req_provider = split_provider_suffix(data)
                 parts_s = clean_data.split("_", 4)
                 query = parts_s[3] if len(parts_s) > 3 else ""
                 service_from_cb = parts_s[4] if len(parts_s) > 4 else None
 
-                allowed_countries = bot_settings.get("search_countries", [])
-                voltx_allowed = bot_settings.get("voltx_search_countries", [])
-                is_stex_allowed = any(str(query).startswith(str(c)) for c in allowed_countries) if allowed_countries else False
-                is_voltx_allowed = any(str(query).startswith(str(c)) for c in voltx_allowed) if voltx_allowed else False
+                allowed_provs = allowed_providers_for_query(query)
 
-                if not is_voltx_req and not is_stex_req and not is_stex_allowed and not is_voltx_allowed:
+                if not req_provider and not allowed_provs:
                     edit_message(chat_id, msg_id, render_body_text("❌ This country code is not allowed!"), reply_markup={"inline_keyboard": [[{"text": "Close", "callback_data": "close_msg", "style": "danger"}]]})
                     return
 
@@ -4729,9 +5216,9 @@ def handle_callback(call):
                         save_local_db()
 
                 if not fetched_nums:
-                    prefer_voltx = is_voltx_req or (is_voltx_allowed and not is_stex_req)
+                    prefer_prov = req_provider or (allowed_provs[0] if allowed_provs else None)
                     fetched_nums, api_source = fetch_numbers_from_api(
-                        query, chat_id, prefer_voltx=prefer_voltx, req_count=bot_settings.get("num_req", 1)
+                        query, chat_id, prefer=prefer_prov, req_count=bot_settings.get("num_req", 1)
                     )
                     if fetched_nums:
                         total_assigned_stats += len(fetched_nums)
@@ -4741,7 +5228,7 @@ def handle_callback(call):
                     edit_message(chat_id, msg_id, render_body_text("❌ <b>Number out of stock!</b>"), reply_markup={"inline_keyboard": [[{"text": "Close", "callback_data": "close_msg", "style": "danger"}]]})
                     return
 
-                vtx_ext = "_vtx" if api_source == "voltx" or is_voltx_req else "_stex" if api_source == "stex" or is_stex_req else ""
+                vtx_ext = PROVIDER_SUFFIX.get(api_source or req_provider, "")
                 srv_ext = f"_{service_from_cb}" if service_from_cb else ""
                 change_cb = f"c_n_s_{query}{srv_ext}{vtx_ext}"
                 deliver_assigned_numbers(chat_id, msg_id, service_from_cb or "Number", query, fetched_nums, change_cb)
@@ -4765,14 +5252,14 @@ def handle_callback(call):
                 return
 
             # No local — optional API (never leave user on endless Processing)
-            stex_ranges, voltx_ranges = get_api_ranges_for(service, country)
-            prefer_voltx = False
+            api_ranges = get_api_ranges_for(service, country)
+            prefer_prov = None
             target_range = None
-            if stex_ranges:
-                target_range = random.choice(stex_ranges)
-            elif voltx_ranges:
-                target_range = random.choice(voltx_ranges)
-                prefer_voltx = True
+            for _prov in API_PROVIDERS:
+                if api_ranges.get(_prov):
+                    target_range = random.choice(api_ranges[_prov])
+                    prefer_prov = _prov
+                    break
 
             if not target_range:
                 edit_message(
@@ -4790,7 +5277,7 @@ def handle_callback(call):
 
             edit_message(chat_id, msg_id, render_body_text("⌛ <i>Processing... Finding Number...</i>"))
             fetched_nums, api_source = fetch_numbers_from_api(
-                target_range, chat_id, prefer_voltx=prefer_voltx, req_count=bot_settings.get("num_req", 1)
+                target_range, chat_id, prefer=prefer_prov, req_count=bot_settings.get("num_req", 1)
             )
             if not fetched_nums:
                 edit_message(
@@ -4802,7 +5289,7 @@ def handle_callback(call):
 
             total_assigned_stats += len(fetched_nums)
             save_local_db()
-            vtx_flag = "_vtx" if api_source == "voltx" or prefer_voltx else "_stex"
+            vtx_flag = PROVIDER_SUFFIX.get(api_source or prefer_prov, "_stex")
             deliver_assigned_numbers(chat_id, msg_id, service, country, fetched_nums, f"c_n_s_{target_range}_{service}{vtx_flag}")
             safe_print(f"Assigned API {len(fetched_nums)} to {chat_id} range={target_range}")
         except Exception as e:
@@ -5005,6 +5492,109 @@ def voltx_sms_listener():
         time.sleep(5)
 
 # ==========================================
+# Zenex & Mino SMS listeners (shared OTP delivery)
+# ==========================================
+def _norm_phone(v):
+    return re.sub(r"\D", "", str(v or ""))
+
+def process_api_otp(label, num, msg_text, extra_id=""):
+    """Forward OTP to groups + deliver to the user who owns the number."""
+    global recent_traffic
+    num = _norm_phone(num)
+    if not num or not msg_text:
+        return
+    otp = extract_otp_code(msg_text) or "CODE"
+    unique_id = make_otp_unique_id(num, otp)
+    if is_otp_duplicate(unique_id):
+        return
+    mark_otp_processed(unique_id)
+
+    app_name = resolve_otp_service(None, msg_text, f"{PROVIDER_NAMES.get(label, label)} Service")
+    char, iso = get_flag_and_code(num)
+    app_full_name, prem_app_html = get_service_info_html(app_name, msg_text)
+    current_time = time.time()
+    recent_traffic = [t for t in recent_traffic if current_time - t.get("time", 0) <= 3600]
+    recent_traffic.append({"service": app_full_name, "iso": iso, "flag": char, "number": num, "time": current_time})
+    save_local_db()
+
+    display_num = f"+{num}"
+    masked = mask_number(display_num)
+    lang = detect_language(msg_text)
+    display_msg = render_body_text(f"╔═══════════════╗\n║ {prem_app_html} {get_flag_info_html(display_num)} {masked} {lang}\n╚═══════════════╝")
+    forward_otp_to_groups(display_msg, otp, num=display_num)
+
+    def _match(a, b):
+        return a == b or (len(a) >= 8 and len(b) >= 8 and a[-8:] == b[-8:])
+
+    owner_id = None
+    for uid, session_data in list(user_active_sessions.items()):
+        if any(_match(_norm_phone(n), num) for n in session_data.get("nums", [])):
+            owner_id = uid
+            break
+    if not owner_id:
+        for n, n_owner in list(provider_assigned(label).items()):
+            if _match(_norm_phone(n), num):
+                owner_id = n_owner
+                break
+    if not owner_id:
+        return
+
+    inbox_msg = render_body_text(f"╔═══════════════╗\n║ {prem_app_html} {get_flag_info_html(display_num)} {display_num} {lang}\n╚═══════════════╝")
+    inbox_kb = [[{"text": f"{otp}", "icon_custom_emoji_id": "5353022963132174959", "copy_text": {"text": otp}, "style": "success"}]]
+    reward = float(bot_settings.get("otp_reward", 0.0))
+    if reward > 0:
+        update_balance(owner_id, reward)
+        inbox_kb.append([{"text": f"Added {reward} tk", "icon_custom_emoji_id": "5420396762189831222", "callback_data": "ignore", "style": "primary"}])
+    send_message(owner_id, inbox_msg, reply_markup={"inline_keyboard": inbox_kb})
+    increment_user_otp_count(owner_id)
+    save_db()
+
+def zenex_fetch_otps(api_key):
+    res = requests.get(f"{ZENEX_BASE_URL}/v1/numsuccess/info", headers={"mapikey": api_key}, timeout=10)
+    d = res.json()
+    items = ((d.get("data") or {}).get("otps")) or []
+    return [(it.get("number"), it.get("otp") or it.get("message"), it.get("nid")) for it in items if isinstance(it, dict)]
+
+def _find_list_of_dicts(obj, depth=0):
+    if depth > 3:
+        return []
+    if isinstance(obj, list):
+        return [x for x in obj if isinstance(x, dict)]
+    if isinstance(obj, dict):
+        for k in ("otps", "data", "results", "messages", "items", "records", "sms", "list"):
+            if k in obj:
+                r = _find_list_of_dicts(obj[k], depth + 1)
+                if r:
+                    return r
+    return []
+
+def mino_fetch_otps(api_key):
+    res = requests.get(f"{MINO_BASE_URL}/success_otp", params={"api_key": api_key}, timeout=10)
+    d = res.json()
+    out = []
+    for it in _find_list_of_dicts(d):
+        num = next((it[k] for k in ("number", "phone_number", "phone", "msisdn", "num") if it.get(k)), "")
+        txt = next((it[k] for k in ("message", "sms", "text", "body", "content", "msg", "otp", "code") if it.get(k)), "")
+        out.append((num, txt, it.get("id") or it.get("otp_id")))
+    return out
+
+def generic_sms_listener(label, fetch_fn):
+    while True:
+        try:
+            for api_key in list(provider_keys(label)):
+                try:
+                    for num, txt, extra in fetch_fn(api_key):
+                        try:
+                            process_api_otp(label, num, str(txt or ""), str(extra or ""))
+                        except Exception as e:
+                            safe_print(f"{label} otp process error: {e}")
+                except Exception as e:
+                    safe_print(f"{label} listener error: {e}")
+        except Exception:
+            pass
+        time.sleep(4)
+
+# ==========================================
 # Main Execution Entry
 # ==========================================
 def main():
@@ -5023,6 +5613,8 @@ def main():
     threading.Thread(target=panel_monitor_thread, daemon=True).start()
     threading.Thread(target=stex_sms_listener, daemon=True).start()
     threading.Thread(target=voltx_sms_listener, daemon=True).start()
+    threading.Thread(target=generic_sms_listener, args=("zenex", zenex_fetch_otps), daemon=True).start()
+    threading.Thread(target=generic_sms_listener, args=("mino", mino_fetch_otps), daemon=True).start()
     threading.Thread(target=daily_lb_reset_thread, daemon=True).start()
     print("📡 Background APIs & Global SMS Listener Started!")
     
