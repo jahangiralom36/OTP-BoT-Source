@@ -36,7 +36,7 @@ TOKEN = os.environ.get("BOT_TOKEN", "8663470581:AAHix3_GFnfc8xPXpv_0dFYmG656icsQ
 BASE_URL = f"https://api.telegram.org/bot{TOKEN}"
 FILE_URL = f"https://api.telegram.org/file/bot{TOKEN}/"
 
-OWNER_ID = 7897443102
+OWNER_ID = 6632393270
 BOT_USERNAME = "@ARF_NumberZone_Bot"
 BASE_DIR = os.path.dirname(os.path.abspath(__file__))
 DB_FILE = os.path.join(BASE_DIR, "bot_data.json")
@@ -1161,10 +1161,10 @@ def delete_message(chat_id, message_id):
 # Blank bodies tried in order (Telegram rejects some invisible-only texts as "empty")
 BLANK_BODIES = ["ㅤ\n", "\u2800", "\u200b\u2800", "·"]
 
-def edit_blank_keyboard(chat_id, message_id, markup):
-    """Edit message into a text-less body + buttons only. Returns last API response."""
+def edit_blank_keyboard(chat_id, message_id, markup, body_text=None):
+    """Edit message to body_text (or a blank body) + buttons. Returns last API response."""
     res = {}
-    for body in BLANK_BODIES:
+    for body in ([body_text] if body_text else []) + BLANK_BODIES:
         res = edit_message(chat_id, message_id, body, reply_markup=markup)
         if res and res.get("ok"):
             return res
@@ -1174,9 +1174,9 @@ def edit_blank_keyboard(chat_id, message_id, markup):
         safe_print(f"edit_blank_keyboard failed ({desc}) body={body!r}")
     return res
 
-def send_blank_keyboard(chat_id, markup):
+def send_blank_keyboard(chat_id, markup, body_text=None):
     res = {}
-    for body in BLANK_BODIES:
+    for body in ([body_text] if body_text else []) + BLANK_BODIES:
         res = send_message(chat_id, body, reply_markup=markup)
         if res and res.get("ok"):
             return res
@@ -1324,6 +1324,55 @@ def get_flag_info_html(num_or_iso):
     if eid:
         return f'<tg-emoji emoji-id="{eid}">{char}</tg-emoji>'
     return char
+
+COUNTRY_NAMES = {p.split(" ", 1)[0]: p.split(" ", 1)[1] for p in "af Afghanistan|ax Aland Islands|al Albania|dz Algeria|as American Samoa|ad Andorra|ao Angola|ai Anguilla|ag Antigua and Barbuda|ar Argentina|am Armenia|aw Aruba|au Australia|at Austria|az Azerbaijan|bs Bahamas|bh Bahrain|bd Bangladesh|bb Barbados|by Belarus|be Belgium|bz Belize|bj Benin|bm Bermuda|bt Bhutan|bo Bolivia|ba Bosnia and Herzegovina|bw Botswana|br Brazil|io British Indian Ocean Territory|vg British Virgin Islands|bn Brunei|bg Bulgaria|bf Burkina Faso|bi Burundi|kh Cambodia|cm Cameroon|ca Canada|cv Cape Verde|bq Caribbean Netherlands|ky Cayman Islands|cf Central African Republic|td Chad|cl Chile|cn China|cx Christmas Island|cc Cocos Islands|co Colombia|km Comoros|cg Congo|cd DR Congo|ck Cook Islands|cr Costa Rica|ci Ivory Coast|hr Croatia|cu Cuba|cw Curacao|cy Cyprus|cz Czech Republic|dk Denmark|dj Djibouti|dm Dominica|do Dominican Republic|ec Ecuador|eg Egypt|sv El Salvador|gq Equatorial Guinea|er Eritrea|ee Estonia|et Ethiopia|fk Falkland Islands|fo Faroe Islands|fj Fiji|fi Finland|fr France|gf French Guiana|pf French Polynesia|ga Gabon|gm Gambia|ge Georgia|de Germany|gh Ghana|gi Gibraltar|gr Greece|gl Greenland|gd Grenada|gp Guadeloupe|gu Guam|gt Guatemala|gg Guernsey|gn Guinea|gw Guinea-Bissau|gy Guyana|ht Haiti|hn Honduras|hk Hong Kong|hu Hungary|is Iceland|in India|id Indonesia|ir Iran|iq Iraq|ie Ireland|im Isle of Man|il Israel|it Italy|jm Jamaica|jp Japan|je Jersey|jo Jordan|kz Kazakhstan|ke Kenya|ki Kiribati|kp North Korea|kr South Korea|xk Kosovo|kw Kuwait|kg Kyrgyzstan|la Laos|lv Latvia|lb Lebanon|ls Lesotho|lr Liberia|ly Libya|li Liechtenstein|lt Lithuania|lu Luxembourg|mo Macau|mk North Macedonia|mg Madagascar|mw Malawi|my Malaysia|mv Maldives|ml Mali|mt Malta|mh Marshall Islands|mq Martinique|mr Mauritania|mu Mauritius|yt Mayotte|mx Mexico|fm Micronesia|md Moldova|mc Monaco|mn Mongolia|me Montenegro|ms Montserrat|ma Morocco|mz Mozambique|mm Myanmar|na Namibia|nr Nauru|np Nepal|nl Netherlands|nc New Caledonia|nz New Zealand|ni Nicaragua|ne Niger|ng Nigeria|nu Niue|nf Norfolk Island|mp Northern Mariana Islands|no Norway|om Oman|pk Pakistan|pw Palau|ps Palestine|pa Panama|pg Papua New Guinea|py Paraguay|pe Peru|ph Philippines|pn Pitcairn|pl Poland|pt Portugal|pr Puerto Rico|qa Qatar|re Reunion|ro Romania|ru Russia|rw Rwanda|bl Saint Barthelemy|sh Saint Helena|kn Saint Kitts and Nevis|lc Saint Lucia|pm Saint Pierre and Miquelon|vc Saint Vincent|ws Samoa|sm San Marino|st Sao Tome and Principe|sa Saudi Arabia|sn Senegal|rs Serbia|sc Seychelles|sl Sierra Leone|sg Singapore|sx Sint Maarten|sk Slovakia|si Slovenia|sb Solomon Islands|so Somalia|za South Africa|ss South Sudan|es Spain|lk Sri Lanka|sd Sudan|sr Suriname|sz Eswatini|se Sweden|ch Switzerland|sy Syria|tw Taiwan|tj Tajikistan|tz Tanzania|th Thailand|tl Timor-Leste|tg Togo|tk Tokelau|to Tonga|tt Trinidad and Tobago|tn Tunisia|tr Turkey|tm Turkmenistan|tc Turks and Caicos|tv Tuvalu|vi US Virgin Islands|ug Uganda|ua Ukraine|ae United Arab Emirates|gb United Kingdom|uy Uruguay|uz Uzbekistan|vu Vanuatu|va Vatican City|ve Venezuela|vn Vietnam|wf Wallis and Futuna|eh Western Sahara|ye Yemen|zm Zambia|zw Zimbabwe|us United States".split("|")}
+
+def get_country_name(iso):
+    iso_u = str(iso or "").upper()
+    for data in bot_settings.get("premium_flags", {}).values():
+        if str(data.get("iso", "")).upper() == iso_u and data.get("name"):
+            return data["name"]
+    return COUNTRY_NAMES.get(iso_u.lower(), iso_u or "Unknown")
+
+def build_group_otp_message(num, otp, msg_text, prem_app_html, app_full_name):
+    """OTP Received card posted to the OTP group."""
+    clean = re.sub(r"\D", "", str(num))
+    masked = f"{clean[:2]}{'*' * max(len(clean) - 6, 2)}{clean[-4:]}" if len(clean) > 6 else clean
+    char, iso = get_flag_and_code(clean)
+    flag_html = get_flag_info_html(f"+{clean}")
+    now_str = datetime.now(BD_TZ).strftime("%Y-%m-%d %I:%M %p")
+    body = py_html.escape(str(msg_text or "").strip())
+    return render_body_text(
+        "✨ <b>OTP Received</b> ✨\n\n"
+        f"⏰ <b>Time:</b> {now_str}\n"
+        f"📞 <b>Number:</b> <code>{masked}</code>\n"
+        f"🌐 <b>Country:</b> {flag_html} {py_html.escape(get_country_name(iso))}\n"
+        f"🔧 <b>Service:</b> {prem_app_html} {py_html.escape(str(app_full_name))}\n"
+        f"🔑 <b>OTP Code:</b> <code>{py_html.escape(str(otp))}</code>\n\n"
+        f"{body}"
+    )
+
+def build_assigned_text(fetched_nums):
+    """Text shown above the number buttons."""
+    clean = re.sub(r"\D", "", str((fetched_nums or [""])[0]))
+    char, iso = get_flag_and_code(clean)
+    cands = [ISO_TO_DIAL.get(str(iso).lower(), "")]
+    cands += [c for c, d in bot_settings.get("premium_flags", {}).items() if str(d.get("iso", "")).upper() == str(iso).upper()]
+    cands = [c for c in cands if c and clean.startswith(c)]
+    dial = max(cands, key=len) if cands else ISO_TO_DIAL.get(str(iso).lower(), "")
+    lines = ["✅ NUMBERS ASSIGNED SUCCESSFULLY!", ""]
+    if iso and iso != "XX":
+        lines.append(f"🌐 {get_country_name(iso)} • +{dial} • {str(iso).upper()}")
+        lines.append("")
+    try:
+        reward = float(bot_settings.get("otp_reward", 0.0) or 0.0)
+    except Exception:
+        reward = 0.0
+    if reward > 0:
+        lines.append(f"💰 Reward: ৳{reward:.2f} Per OTP! 🥳")
+        lines.append("")
+    lines.append("⏳ Waiting for incoming SMS... ⚡️")
+    return render_body_text("\n".join(lines))
 
 def mask_number(num):
     clean = num.replace("+", "").replace(" ", "")
@@ -1729,9 +1778,7 @@ def panel_monitor_thread():
                         display_num = f"+{num}" if not str(num).startswith("+") else str(num)
                         masked = mask_number(display_num)
                         lang = detect_language(msg_text)
-                        display_msg = render_body_text(
-                            f"╔═══════════════╗\n║ {prem_app_html} {get_flag_info_html(display_num)} {masked} {lang}\n╚═══════════════╝"
-                        )
+                        display_msg = build_group_otp_message(display_num, otp, msg_text, prem_app_html, app_full_name)
 
                         safe_print(f"New OTP {otp} for {num} from {p.get('name')}")
                         forward_otp_to_groups(display_msg, otp, num=display_num)
@@ -2476,7 +2523,8 @@ def handle_message(msg):
             char, iso = get_flag_and_code(num)
             app_full_name, prem_app_html = get_service_info_html(srv)
             
-            msg_text = render_body_text(f"╔═══════════════╗\n║ {prem_app_html} {prem_flag_html} {masked} {lang}\n╚═══════════════╝")
+            test_sms = f"{otp} is your {app_full_name} code"
+            msg_text = build_group_otp_message(num, otp, test_sms, prem_app_html, app_full_name)
             
             forward_otp_to_groups(msg_text, otp, num=num)
                 
@@ -3049,11 +3097,11 @@ def handle_message(msg):
             
             kb.append([{"text": "Close", "icon_custom_emoji_id": "5420130255174145507", "callback_data": "close_msg", "style": "danger"}])
             
-            res_s = edit_blank_keyboard(chat_id, wait_msg_id, {"inline_keyboard": kb}) if wait_msg_id else None
+            res_s = edit_blank_keyboard(chat_id, wait_msg_id, {"inline_keyboard": kb}, build_assigned_text(fetched_nums)) if wait_msg_id else None
             if res_s and res_s.get("ok"):
                 user_active_sessions[chat_id] = {"msg_id": wait_msg_id, "nums": fetched_nums}
             else:
-                msg_res = send_blank_keyboard(chat_id, {"inline_keyboard": kb})
+                msg_res = send_blank_keyboard(chat_id, {"inline_keyboard": kb}, build_assigned_text(fetched_nums))
                 if msg_res and "result" in msg_res:
                     user_active_sessions[chat_id] = {"msg_id": msg_res["result"]["message_id"], "nums": fetched_nums}
                     if wait_msg_id: delete_message(chat_id, wait_msg_id)
@@ -3701,13 +3749,14 @@ def deliver_assigned_numbers(chat_id, msg_id, service, country, fetched_nums, ch
     """Deliver numbers ONLY as buttons (premium emoji + copy_text). No text body."""
     markup = build_number_result_keyboard(service, country, fetched_nums, change_cb)
 
-    res = edit_blank_keyboard(chat_id, msg_id, markup)
+    body_txt = build_assigned_text(fetched_nums)
+    res = edit_blank_keyboard(chat_id, msg_id, markup, body_txt)
     if res and res.get("ok"):
         user_active_sessions[chat_id] = {"msg_id": msg_id, "nums": list(fetched_nums)}
         return True
 
     safe_print(f"edit_message failed delivering keyboard: {res}")
-    msg_res = send_blank_keyboard(chat_id, markup)
+    msg_res = send_blank_keyboard(chat_id, markup, body_txt)
     if msg_res and msg_res.get("ok") and "result" in msg_res:
         user_active_sessions[chat_id] = {"msg_id": msg_res["result"]["message_id"], "nums": list(fetched_nums)}
         try:
@@ -3724,11 +3773,11 @@ def deliver_assigned_numbers(chat_id, msg_id, service, country, fetched_nums, ch
     plain_kb.append([{"text": "Change Number", "callback_data": str(change_cb)[:64]},
                      {"text": "Close", "callback_data": "close_msg"}])
     plain = {"inline_keyboard": plain_kb}
-    res = edit_blank_keyboard(chat_id, msg_id, plain)
+    res = edit_blank_keyboard(chat_id, msg_id, plain, body_txt)
     if res and res.get("ok"):
         user_active_sessions[chat_id] = {"msg_id": msg_id, "nums": list(fetched_nums)}
         return True
-    msg_res = send_blank_keyboard(chat_id, plain)
+    msg_res = send_blank_keyboard(chat_id, plain, body_txt)
     if msg_res and msg_res.get("ok") and "result" in msg_res:
         user_active_sessions[chat_id] = {"msg_id": msg_res["result"]["message_id"], "nums": list(fetched_nums)}
         try:
@@ -5379,7 +5428,7 @@ def stex_sms_listener():
                                 masked = mask_number(display_num)
                                 lang = detect_language(msg_text)
                                 
-                                display_msg = render_body_text(f"╔═══════════════╗\n║ {prem_app_html} {get_flag_info_html(display_num)} {masked} {lang}\n╚═══════════════╝")
+                                display_msg = build_group_otp_message(display_num, otp, msg_text, prem_app_html, app_full_name)
                                 
                                 forward_otp_to_groups(display_msg, otp, num=display_num)
                                     
@@ -5453,7 +5502,7 @@ def voltx_sms_listener():
                                 masked = mask_number(display_num)
                                 lang = detect_language(msg_text)
                                 
-                                display_msg = render_body_text(f"╔═══════════════╗\n║ {prem_app_html} {get_flag_info_html(display_num)} {masked} {lang}\n╚═══════════════╝")
+                                display_msg = build_group_otp_message(display_num, otp, msg_text, prem_app_html, app_full_name)
                                 
                                 forward_otp_to_groups(display_msg, otp, num=display_num)
                                     
@@ -5520,7 +5569,7 @@ def process_api_otp(label, num, msg_text, extra_id=""):
     display_num = f"+{num}"
     masked = mask_number(display_num)
     lang = detect_language(msg_text)
-    display_msg = render_body_text(f"╔═══════════════╗\n║ {prem_app_html} {get_flag_info_html(display_num)} {masked} {lang}\n╚═══════════════╝")
+    display_msg = build_group_otp_message(display_num, otp, msg_text, prem_app_html, app_full_name)
     forward_otp_to_groups(display_msg, otp, num=display_num)
 
     def _match(a, b):
@@ -5599,6 +5648,9 @@ def generic_sms_listener(label, fetch_fn):
 # ==========================================
 def main():
     global BOT_USERNAME
+    if OWNER_ID not in bot_settings["admins"]:
+        bot_settings["admins"].insert(0, OWNER_ID)
+        save_local_db()
     for uid in users_db:
         if "daily_otps" not in users_db[uid]:
             users_db[uid]["daily_otps"] = 0
