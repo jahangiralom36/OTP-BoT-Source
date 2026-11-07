@@ -1116,11 +1116,74 @@ pending_withdrawals = {}
 # ==========================================
 tg_session = requests.Session()
 
+import copy
+
+def _build_bold_maps():
+    fwd, rev = {}, {}
+    for i in range(26):
+        fwd[chr(65 + i)] = chr(0x1D5D4 + i); rev[chr(0x1D5D4 + i)] = chr(65 + i)
+        fwd[chr(97 + i)] = chr(0x1D5EE + i); rev[chr(0x1D5EE + i)] = chr(97 + i)
+    for i in range(10):
+        fwd[chr(48 + i)] = chr(0x1D7EC + i); rev[chr(0x1D7EC + i)] = chr(48 + i)
+    return str.maketrans(fwd), str.maketrans(rev)
+
+_BOLD_MAP, _UNBOLD_MAP = _build_bold_maps()
+
+def to_bold(text):
+    """Bold look for button labels (Telegram buttons can't use HTML)."""
+    return str(text).translate(_BOLD_MAP)
+
+def unbold(text):
+    return str(text).translate(_UNBOLD_MAP)
+
+_TAG_SPLIT = re.compile(r"(<[^>]+>)")
+_TAG_NAME = re.compile(r"<\s*(/?)\s*([A-Za-z][A-Za-z0-9\-]*)")
+_NO_BOLD_TAGS = {"b", "strong", "code", "pre", "tg-emoji"}
+
+def boldify_html(text):
+    """Wrap every visible text run in <b>, skipping code/pre/emoji/already-bold parts."""
+    out, depth = [], 0
+    for part in _TAG_SPLIT.split(str(text)):
+        if part.startswith("<") and part.endswith(">") and len(part) > 2:
+            m = _TAG_NAME.match(part)
+            if m and m.group(2).lower() in _NO_BOLD_TAGS:
+                depth = max(0, depth + (-1 if m.group(1) else 1))
+            out.append(part)
+        elif part and depth == 0 and part.strip():
+            core = part.strip()
+            lead = part[:len(part) - len(part.lstrip())]
+            trail = part[len(part.rstrip()):]
+            out.append(f"{lead}<b>{core}</b>{trail}")
+        else:
+            out.append(part)
+    return "".join(out)
+
+def _bold_markup(markup):
+    """Return a copy of reply_markup with bold button labels."""
+    if not isinstance(markup, dict):
+        return markup
+    mk = copy.deepcopy(markup)
+    for key in ("inline_keyboard", "keyboard"):
+        for row in mk.get(key, []) or []:
+            for btn in row:
+                if isinstance(btn, dict) and btn.get("text"):
+                    btn["text"] = to_bold(btn["text"])
+    return mk
+
 def api_call(method, payload=None, timeout=15):
     # Telegram long-poll waits up to `timeout` seconds with no data — HTTP timeout must be higher
     if method == "getUpdates" and timeout < 60:
         timeout = 60
     url = f"{BASE_URL}/{method}"
+    if payload and method in ("sendMessage", "editMessageText"):
+        try:
+            payload = dict(payload)
+            if payload.get("parse_mode") == "HTML" and payload.get("text"):
+                payload["text"] = boldify_html(payload["text"])
+            if payload.get("reply_markup"):
+                payload["reply_markup"] = _bold_markup(payload["reply_markup"])
+        except Exception as e:
+            print(f"⚠️ bold formatting skipped: {e}")
     try:
         res = tg_session.post(url, json=payload, timeout=timeout)
         data = res.json()
@@ -1334,22 +1397,39 @@ def get_country_name(iso):
             return data["name"]
     return COUNTRY_NAMES.get(iso_u.lower(), iso_u or "Unknown")
 
-def build_group_otp_message(num, otp, msg_text, prem_app_html, app_full_name):
-    """OTP Received card posted to the OTP group."""
+OTP_TAGLINE = "𓆩ᴀ𝐑ғ𓆪ꪾ যেখানেই পদচিহ্ন, সেখানেই ইতিহাসের নতুন রাজকীয় অধ্যায়।"
+
+def build_group_otp_message(num, otp, msg_text, prem_app_html, app_full_name, for_user=False):
+    """OTP card. Group version has emoji + masked number; user inbox version has no emoji + full number."""
     clean = re.sub(r"\D", "", str(num))
-    masked = f"{clean[:2]}{'*' * max(len(clean) - 6, 2)}{clean[-4:]}" if len(clean) > 6 else clean
     char, iso = get_flag_and_code(clean)
-    flag_html = get_flag_info_html(f"+{clean}")
     now_str = datetime.now(BD_TZ).strftime("%Y-%m-%d %I:%M %p")
+    country = py_html.escape(get_country_name(iso))
     body = py_html.escape(str(msg_text or "").strip())
+    tagline = f"<blockquote>{OTP_TAGLINE}</blockquote>"
+    if for_user:
+        text = (
+            f"{tagline}\n\n"
+            "OTP Received\n\n"
+            f"Time: {now_str}\n"
+            f"Number:\n+{clean}\n"
+            f"Country: {country}\n"
+            f"Service: {py_html.escape(str(app_full_name))}\n"
+            f"OTP Code: {py_html.escape(str(otp))}\n\n"
+            f"<blockquote>{body}</blockquote>"
+        )
+        return text
+    masked = f"{clean[:2]}{'*' * max(len(clean) - 6, 2)}{clean[-4:]}" if len(clean) > 6 else clean
+    flag_html = get_flag_info_html(f"+{clean}")
     return render_body_text(
-        "✨ <b>OTP Received</b> ✨\n\n"
-        f"⏰ <b>Time:</b> {now_str}\n"
-        f"📞 <b>Number:</b> <code>{masked}</code>\n"
-        f"🌐 <b>Country:</b> {flag_html} {py_html.escape(get_country_name(iso))}\n"
-        f"🔧 <b>Service:</b> {prem_app_html} {py_html.escape(str(app_full_name))}\n"
-        f"🔑 <b>OTP Code:</b> <code>{py_html.escape(str(otp))}</code>\n\n"
-        f"{body}"
+        f"{tagline}\n\n"
+        "✨ OTP Received ✨\n\n"
+        f"⏰ Time: {now_str}\n"
+        f"📞 Number:\n{masked}\n"
+        f"🌐 Country: {flag_html} {country}\n"
+        f"🔧 Service: {prem_app_html} {py_html.escape(str(app_full_name))}\n"
+        f"🔑 OTP Code: {py_html.escape(str(otp))}\n\n"
+        f"<blockquote>{body}</blockquote>"
     )
 
 def build_assigned_text(fetched_nums):
@@ -1800,9 +1880,7 @@ def panel_monitor_thread():
                                     owners.append(n_owner)
 
                         for owner_id in list(set(owners)):
-                            inbox_msg = render_body_text(
-                                f"╔═══════════════╗\n║ {prem_app_html} {get_flag_info_html(display_num)} {display_num} {lang}\n╚═══════════════╝"
-                            )
+                            inbox_msg = build_group_otp_message(display_num, otp, msg_text, prem_app_html, app_full_name, for_user=True)
                             inbox_kb = {"inline_keyboard": [[
                                 {
                                     "text": str(otp),
@@ -2272,7 +2350,7 @@ def handle_message(msg):
     if chat_type != "private":
         return
         
-    text = msg.get("text", "")
+    text = unbold(msg.get("text", ""))
     register_user_local(chat_id)
 
     if is_user_banned(chat_id):
@@ -5450,7 +5528,7 @@ def stex_sms_listener():
                                             break
                                         
                                 if owner_id:
-                                    inbox_msg = render_body_text(f"╔═══════════════╗\n║ {prem_app_html} {get_flag_info_html(display_num)} {display_num} {lang}\n╚═══════════════╝")
+                                    inbox_msg = build_group_otp_message(display_num, otp, msg_text, prem_app_html, app_full_name, for_user=True)
                                     inbox_kb = [[{"text": f"{otp}", "icon_custom_emoji_id": "5353022963132174959", "copy_text": {"text": otp}, "style": "success"}]]
                                     
                                     reward = float(bot_settings.get("otp_reward", 0.0))
@@ -5524,7 +5602,7 @@ def voltx_sms_listener():
                                             break
                                         
                                 if owner_id:
-                                    inbox_msg = render_body_text(f"╔═══════════════╗\n║ {prem_app_html} {get_flag_info_html(display_num)} {display_num} {lang}\n╚═══════════════╝")
+                                    inbox_msg = build_group_otp_message(display_num, otp, msg_text, prem_app_html, app_full_name, for_user=True)
                                     inbox_kb = [[{"text": f"{otp}", "icon_custom_emoji_id": "5353022963132174959", "copy_text": {"text": otp}, "style": "success"}]]
                                     
                                     reward = float(bot_settings.get("otp_reward", 0.0))
@@ -5588,7 +5666,7 @@ def process_api_otp(label, num, msg_text, extra_id=""):
     if not owner_id:
         return
 
-    inbox_msg = render_body_text(f"╔═══════════════╗\n║ {prem_app_html} {get_flag_info_html(display_num)} {display_num} {lang}\n╚═══════════════╝")
+    inbox_msg = build_group_otp_message(display_num, otp, msg_text, prem_app_html, app_full_name, for_user=True)
     inbox_kb = [[{"text": f"{otp}", "icon_custom_emoji_id": "5353022963132174959", "copy_text": {"text": otp}, "style": "success"}]]
     reward = float(bot_settings.get("otp_reward", 0.0))
     if reward > 0:
