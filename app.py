@@ -152,6 +152,8 @@ bot_settings = {
     "mino_services": {},
     "zenex_search_countries": [],
     "mino_search_countries": [],
+    "inline_emoji_overrides": {},
+    "body_emoji_overrides": {},
     "search_countries": [],
     "stex_services": {},
     "voltx_services": {},
@@ -1163,10 +1165,13 @@ def _bold_markup(markup):
     if not isinstance(markup, dict):
         return markup
     mk = copy.deepcopy(markup)
+    inline_over = bot_settings.get("inline_emoji_overrides", {}) or {}
     for key in ("inline_keyboard", "keyboard"):
         for row in mk.get(key, []) or []:
             for btn in row:
                 if isinstance(btn, dict) and btn.get("text"):
+                    if key == "inline_keyboard" and btn["text"] in inline_over and "icon_custom_emoji_id" in btn:
+                        btn["icon_custom_emoji_id"] = inline_over[btn["text"]]
                     btn["text"] = to_bold(btn["text"])
     return mk
 
@@ -1208,9 +1213,15 @@ def get_updates(offset=None, timeout=50):
     # HTTP timeout = Telegram long-poll + buffer
     return api_call("getUpdates", payload, timeout=timeout + 10)
 
-def send_message(chat_id, text, reply_markup=None, parse_mode="HTML"):
+HEART_EFFECT_ID = "5159385139981059251"  # Telegram message effect: hearts (private chats only)
+
+def send_message(chat_id, text, reply_markup=None, parse_mode="HTML", effect_id=None):
     payload = {"chat_id": chat_id, "text": text, "parse_mode": parse_mode, "disable_web_page_preview": True}
     if reply_markup: payload["reply_markup"] = reply_markup
+    if effect_id:
+        res = api_call("sendMessage", dict(payload, message_effect_id=effect_id))
+        if res and res.get("ok"):
+            return res
     return api_call("sendMessage", payload)
 
 def edit_message(chat_id, message_id, text, reply_markup=None, parse_mode="HTML"):
@@ -1302,14 +1313,28 @@ def broadcast_copymessage(from_chat_id, msg_id):
         
     send_message(from_chat_id, render_body_text(f"📢 <b>Broadcast Completed!</b>\n✅ Success: {success}\n❌ Failed: {failed}\n👥 Total Sent: {len(users)}"))
 
+_TGEMOJI_RE = re.compile(r'<tg-emoji emoji-id="(\d+)">(.*?)</tg-emoji>')
+
+def body_emoji_map():
+    """Default body emoji map + admin overrides (Premium Emoji > Bot Texts)."""
+    merged = dict(GLOBAL_BODY_EMOJIS)
+    merged.update(bot_settings.get("body_emoji_overrides", {}) or {})
+    return merged
+
 def render_body_text(text):
     if not text: return str(text)
+    emoji_map = body_emoji_map()
+    overrides = bot_settings.get("body_emoji_overrides", {}) or {}
     parts = re.split(r'(<tg-emoji.*?</tg-emoji>)', str(text))
     for i in range(len(parts)):
         if not parts[i].startswith('<tg-emoji'):
-            for normal_emj, prem_id in GLOBAL_BODY_EMOJIS.items():
+            for normal_emj, prem_id in emoji_map.items():
                 if normal_emj in parts[i]:
                     parts[i] = parts[i].replace(normal_emj, f'<tg-emoji emoji-id="{prem_id}">{normal_emj}</tg-emoji>')
+        elif overrides:
+            m = _TGEMOJI_RE.match(parts[i])
+            if m and m.group(2) in overrides:
+                parts[i] = f'<tg-emoji emoji-id="{overrides[m.group(2)]}">{m.group(2)}</tg-emoji>'
     return "".join(parts)
 
 def extract_premium_html(msg):
@@ -1412,7 +1437,7 @@ def build_group_otp_message(num, otp, msg_text, prem_app_html, app_full_name, fo
             f"{tagline}\n\n"
             "OTP Received\n\n"
             f"Time: {now_str}\n"
-            f"Number:\n+{clean}\n"
+            f"Number: +{clean}\n"
             f"Country: {country}\n"
             f"Service: {py_html.escape(str(app_full_name))}\n"
             f"OTP Code: {py_html.escape(str(otp))}\n\n"
@@ -1425,7 +1450,7 @@ def build_group_otp_message(num, otp, msg_text, prem_app_html, app_full_name, fo
         f"{tagline}\n\n"
         "✨ OTP Received ✨\n\n"
         f"⏰ Time: {now_str}\n"
-        f"📞 Number:\n{masked}\n"
+        f"📞 Number: {masked}\n"
         f"🌐 Country: {flag_html} {country}\n"
         f"🔧 Service: {prem_app_html} {py_html.escape(str(app_full_name))}\n"
         f"🔑 OTP Code: {py_html.escape(str(otp))}\n\n"
@@ -1440,7 +1465,7 @@ def build_assigned_text(fetched_nums):
     cands += [c for c, d in bot_settings.get("premium_flags", {}).items() if str(d.get("iso", "")).upper() == str(iso).upper()]
     cands = [c for c in cands if c and clean.startswith(c)]
     dial = max(cands, key=len) if cands else ISO_TO_DIAL.get(str(iso).lower(), "")
-    lines = ["✅ NUMBERS ASSIGNED SUCCESSFULLY!", ""]
+    lines = [f"<blockquote>{OTP_TAGLINE}</blockquote>", "", "✅ NUMBERS ASSIGNED SUCCESSFULLY!", ""]
     if iso and iso != "XX":
         lines.append(f"🌐 {get_country_name(iso)} • +{dial} • {str(iso).upper()}")
         lines.append("")
@@ -1893,7 +1918,7 @@ def panel_monitor_thread():
                             if reward > 0:
                                 update_balance(owner_id, reward)
                                 inbox_kb["inline_keyboard"].append([{"text": f"Added {reward} tk", "callback_data": "ignore", "style": "primary"}])
-                            send_message(owner_id, inbox_msg, reply_markup=inbox_kb)
+                            send_message(owner_id, inbox_msg, reply_markup=inbox_kb, effect_id=HEART_EFFECT_ID)
                             increment_user_otp_count(owner_id)
 
                         save_db()
@@ -2134,6 +2159,87 @@ def menu_buttons_list_keyboard(menu_key):
         ])
     kb.append([{"text": "Add Inline Button", "icon_custom_emoji_id": "5420323438508155202", "callback_data": f"md_addbtn_{menu_key}", "style": "success"}])
     kb.append([{"text": "Back", "icon_custom_emoji_id": "5267490665117275176", "callback_data": f"md_edit_{menu_key}", "style": "primary"}])
+    return {"inline_keyboard": kb}
+
+UE_PAGE = 10
+_SRC_BTN_RE = re.compile(r'\{"text": "([^"{}\\]+)",\s*"icon_custom_emoji_id": "(\d+)"')
+DEFAULT_KB_ICONS = {}
+
+def get_inline_button_list():
+    """All static inline buttons of the bot (label, current emoji id), found from the source."""
+    global _INLINE_BTN_CACHE
+    try:
+        return _INLINE_BTN_CACHE
+    except NameError:
+        pass
+    items = {}
+    try:
+        with open(os.path.abspath(__file__), "r", encoding="utf-8") as f:
+            for label, eid in _SRC_BTN_RE.findall(f.read()):
+                items.setdefault(label, eid)
+    except Exception as e:
+        safe_print(f"inline button scan error: {e}")
+    _INLINE_BTN_CACHE = sorted(items.items(), key=lambda x: x[0].lower())
+    return _INLINE_BTN_CACHE
+
+def get_text_emoji_list():
+    merged = body_emoji_map()
+    return sorted(merged.items(), key=lambda x: x[0])
+
+def _pager(prefix, page, total):
+    row = []
+    if page > 0:
+        row.append({"text": "Prev", "icon_custom_emoji_id": "5267490665117275176", "callback_data": f"{prefix}{page - 1}", "style": "primary"})
+    if (page + 1) * UE_PAGE < total:
+        row.append({"text": "Next", "icon_custom_emoji_id": "5420323438508155202", "callback_data": f"{prefix}{page + 1}", "style": "primary"})
+    return row
+
+def ue_menu_keyboard():
+    return {"inline_keyboard": [
+        [{"text": "Inline Buttons", "icon_custom_emoji_id": "5336972142066047577", "callback_data": "ue_in", "style": "primary"}],
+        [{"text": "Keyboard Buttons", "icon_custom_emoji_id": "5352597830089347330", "callback_data": "ue_kb", "style": "success"}],
+        [{"text": "Bot Texts", "icon_custom_emoji_id": "5352552689983067014", "callback_data": "ue_tx", "style": "primary"}],
+        [{"text": "Add Flag / Service Emoji", "icon_custom_emoji_id": "5420323438508155202", "callback_data": "add_single_emoji_old", "style": "success"}],
+        [{"text": "Back", "icon_custom_emoji_id": "5267490665117275176", "callback_data": "manage_emojis", "style": "danger"}]
+    ]}
+
+def ue_inline_keyboard(page=0):
+    items = get_inline_button_list()
+    over = bot_settings.get("inline_emoji_overrides", {}) or {}
+    kb = []
+    for idx in range(page * UE_PAGE, min(len(items), (page + 1) * UE_PAGE)):
+        label, eid = items[idx]
+        kb.append([{"text": label, "icon_custom_emoji_id": over.get(label, eid), "callback_data": f"ue_in_s{idx}", "style": "primary"}])
+    pr = _pager("ue_in_p", page, len(items))
+    if pr: kb.append(pr)
+    kb.append([{"text": "Back", "icon_custom_emoji_id": "5267490665117275176", "callback_data": "add_single_emoji", "style": "danger"}])
+    return {"inline_keyboard": kb}
+
+def ue_keyboard_buttons():
+    kb = []
+    for r, row in enumerate(bot_settings.get("main_keyboard_layout", [])):
+        for c, btn in enumerate(row):
+            kb.append([{"text": btn.get("text", "?"), "icon_custom_emoji_id": btn.get("icon_custom_emoji_id") or "5267490665117275176", "callback_data": f"ue_kb_s_{r}_{c}", "style": "success"}])
+    kb.append([{"text": "Back", "icon_custom_emoji_id": "5267490665117275176", "callback_data": "add_single_emoji", "style": "danger"}])
+    return {"inline_keyboard": kb}
+
+def ue_text_keyboard(page=0):
+    items = get_text_emoji_list()
+    kb, row = [], []
+    for idx in range(page * 20, min(len(items), (page + 1) * 20)):
+        ch, eid = items[idx]
+        row.append({"text": ch, "icon_custom_emoji_id": eid, "callback_data": f"ue_tx_s{idx}", "style": "primary"})
+        if len(row) == 4:
+            kb.append(row); row = []
+    if row: kb.append(row)
+    nav = []
+    if page > 0:
+        nav.append({"text": "Prev", "icon_custom_emoji_id": "5267490665117275176", "callback_data": f"ue_tx_p{page - 1}", "style": "primary"})
+    if (page + 1) * 20 < len(items):
+        nav.append({"text": "Next", "icon_custom_emoji_id": "5420323438508155202", "callback_data": f"ue_tx_p{page + 1}", "style": "primary"})
+    if nav: kb.append(nav)
+    kb.append([{"text": "Add New Emoji", "icon_custom_emoji_id": "5420323438508155202", "callback_data": "ue_tx_add", "style": "success"}])
+    kb.append([{"text": "Back", "icon_custom_emoji_id": "5267490665117275176", "callback_data": "add_single_emoji", "style": "danger"}])
     return {"inline_keyboard": kb}
 
 def emoji_settings_keyboard():
@@ -2609,6 +2715,46 @@ def handle_message(msg):
             send_message(chat_id, render_body_text(f"{PEM['ok']} Test message formatted and sent to all Forward Groups!"), reply_markup=main_menu(chat_id))
             del user_states[chat_id]
             del temp_data[chat_id]
+            return
+
+        elif state == "wait_ue_emoji":
+            info = temp_data.get(chat_id, {})
+            kind, key, back, base_msg = info.get("kind"), info.get("key"), info.get("back", "add_single_emoji"), info.get("msg_id")
+            new_id, new_char = None, ""
+            raw_text = msg.get("text", "")
+            for ent in msg.get("entities", []):
+                if ent.get("type") == "custom_emoji":
+                    new_id = ent.get("custom_emoji_id")
+                    b_text = raw_text.encode("utf-16-le")
+                    new_char = b_text[ent["offset"] * 2:(ent["offset"] + ent["length"]) * 2].decode("utf-16-le")
+                    break
+            is_reset = raw_text.strip().lower() == "reset"
+            if not new_id and not is_reset:
+                send_message(chat_id, render_body_text("❌ No Premium Emoji found. Send ONE Premium Emoji (or <code>reset</code>)."))
+                return
+            if kind == "inline":
+                ov = bot_settings.setdefault("inline_emoji_overrides", {})
+                if is_reset: ov.pop(key, None)
+                else: ov[key] = new_id
+            elif kind == "kb":
+                r, c = key
+                btn = bot_settings["main_keyboard_layout"][r][c]
+                if is_reset: btn["icon_custom_emoji_id"] = DEFAULT_KB_ICONS.get(btn["text"], btn.get("icon_custom_emoji_id", ""))
+                else: btn["icon_custom_emoji_id"] = new_id
+            elif kind == "text":
+                ov = bot_settings.setdefault("body_emoji_overrides", {})
+                if is_reset: ov.pop(key, None)
+                else: ov[key] = new_id
+            elif kind == "text_new":
+                if new_char:
+                    bot_settings.setdefault("body_emoji_overrides", {})[new_char] = new_id
+            save_db()
+            try: delete_message(chat_id, msg["message_id"])
+            except Exception: pass
+            user_states.pop(chat_id, None)
+            temp_data.pop(chat_id, None)
+            handle_callback({"message": {"chat": {"id": chat_id}, "message_id": base_msg}, "data": back, "id": "internal"})
+            send_message(chat_id, render_body_text("✅ Emoji updated!"))
             return
 
         elif state == "wait_for_emoji_extract":
@@ -3388,11 +3534,11 @@ def handle_message(msg):
         total_local = sum(len(b.get("numbers", [])) for b in number_batches.values())
         
         if not all_services:
-            send_message(chat_id, render_body_text(f"{PEM['no']} No numbers or services available!\nLocal stock: <b>0</b>\nUpload numbers from Admin Panel."))
+            send_message(chat_id, render_body_text(f"{PEM['no']} No numbers or services available!\nUpload numbers from Admin Panel."))
         else:
             c_msg = bot_settings["custom_messages"].get("get_number", {})
             base = c_msg.get("text", f"{PEM['pin']} Select Service")
-            txt = render_body_text(f"{base}\n\n📦 Local stock: <b>{total_local}</b>")
+            txt = render_body_text(f"{base}")
             
             apps_db = bot_settings.get("premium_apps", {})
             kb = []
@@ -4303,6 +4449,54 @@ def handle_callback(call):
         edit_message(chat_id, msg_id, render_body_text("📂 Please upload the <b>Service Apps</b> <code>.txt</code> file."), reply_markup={"inline_keyboard": [[{"text": "Cancel", "icon_custom_emoji_id": "5267490665117275176", "callback_data": "manage_emojis", "style": "danger"}]]})
 
     elif data == "add_single_emoji":
+        edit_message(chat_id, msg_id, render_body_text("✨ <b>Upload Emoji</b>\n\nChoose what to update with your Premium Emojis:"), reply_markup=ue_menu_keyboard())
+
+    elif data == "ue_in" or data.startswith("ue_in_p"):
+        page = int(data[7:]) if data.startswith("ue_in_p") else 0
+        edit_message(chat_id, msg_id, render_body_text("🔘 <b>Inline Buttons</b>\n\nTap a button to change its Premium Emoji:"), reply_markup=ue_inline_keyboard(page))
+
+    elif data.startswith("ue_in_s"):
+        idx = int(data[7:])
+        items = get_inline_button_list()
+        if 0 <= idx < len(items):
+            label, cur = items[idx]
+            user_states[chat_id] = "wait_ue_emoji"
+            temp_data[chat_id] = {"msg_id": msg_id, "kind": "inline", "key": label, "back": f"ue_in_p{idx // UE_PAGE}"}
+            edit_message(chat_id, msg_id, render_body_text(f"📝 Send ONE Premium Emoji for the button <b>{py_html.escape(label)}</b>\n\nSend <code>reset</code> to restore the default."), reply_markup={"inline_keyboard": [[{"text": "Cancel", "icon_custom_emoji_id": "5267490665117275176", "callback_data": f"ue_in_p{idx // UE_PAGE}", "style": "danger"}]]})
+
+    elif data == "ue_kb":
+        edit_message(chat_id, msg_id, render_body_text("⌨️ <b>Keyboard Buttons</b>\n\nTap a button to change its Premium Emoji (send /start afterwards to refresh the keyboard):"), reply_markup=ue_keyboard_buttons())
+
+    elif data.startswith("ue_kb_s_"):
+        _, _, _, r, c = data.split("_")
+        r, c = int(r), int(c)
+        try:
+            label = bot_settings["main_keyboard_layout"][r][c]["text"]
+        except Exception:
+            return
+        user_states[chat_id] = "wait_ue_emoji"
+        temp_data[chat_id] = {"msg_id": msg_id, "kind": "kb", "key": (r, c), "back": "ue_kb"}
+        edit_message(chat_id, msg_id, render_body_text(f"📝 Send ONE Premium Emoji for the keyboard button <b>{py_html.escape(label)}</b>"), reply_markup={"inline_keyboard": [[{"text": "Cancel", "icon_custom_emoji_id": "5267490665117275176", "callback_data": "ue_kb", "style": "danger"}]]})
+
+    elif data == "ue_tx" or data.startswith("ue_tx_p"):
+        page = int(data[7:]) if data.startswith("ue_tx_p") else 0
+        edit_message(chat_id, msg_id, render_body_text("📝 <b>Bot Texts</b>\n\nEvery emoji used inside bot texts is listed below. Tap one to replace it with your Premium Emoji everywhere:"), reply_markup=ue_text_keyboard(page))
+
+    elif data == "ue_tx_add":
+        user_states[chat_id] = "wait_ue_emoji"
+        temp_data[chat_id] = {"msg_id": msg_id, "kind": "text_new", "key": None, "back": "ue_tx"}
+        edit_message(chat_id, msg_id, render_body_text("📝 Send ONE Premium Emoji. Its normal emoji will be replaced with it in all bot texts:"), reply_markup={"inline_keyboard": [[{"text": "Cancel", "icon_custom_emoji_id": "5267490665117275176", "callback_data": "ue_tx", "style": "danger"}]]})
+
+    elif data.startswith("ue_tx_s"):
+        idx = int(data[7:])
+        items = get_text_emoji_list()
+        if 0 <= idx < len(items):
+            ch, cur = items[idx]
+            user_states[chat_id] = "wait_ue_emoji"
+            temp_data[chat_id] = {"msg_id": msg_id, "kind": "text", "key": ch, "back": f"ue_tx_p{idx // UE_PAGE}"}
+            edit_message(chat_id, msg_id, render_body_text(f"📝 Send ONE Premium Emoji to replace <b>{ch}</b> in all bot texts.\n\nSend <code>reset</code> to restore the default."), reply_markup={"inline_keyboard": [[{"text": "Cancel", "icon_custom_emoji_id": "5267490665117275176", "callback_data": f"ue_tx_p{idx // UE_PAGE}", "style": "danger"}]]})
+
+    elif data == "add_single_emoji_old":
         user_states[chat_id] = "wait_for_emoji_extract"
         edit_message(chat_id, msg_id, render_body_text("📝 যেকোনো একটি Premium Emoji সেন্ড করুন (যেমন: 🇧🇩 বা 🚫):"), reply_markup={"inline_keyboard": [[{"text": "Cancel", "icon_custom_emoji_id": "5267490665117275176", "callback_data": "manage_emojis", "style": "danger"}]]})
 
@@ -5536,7 +5730,7 @@ def stex_sms_listener():
                                         update_balance(owner_id, reward)
                                         inbox_kb.append([{"text": f"Added {reward} tk", "icon_custom_emoji_id": "5420396762189831222", "callback_data": "ignore", "style": "primary"}])
                                     
-                                    send_message(owner_id, inbox_msg, reply_markup={"inline_keyboard": inbox_kb})
+                                    send_message(owner_id, inbox_msg, reply_markup={"inline_keyboard": inbox_kb}, effect_id=HEART_EFFECT_ID)
                                     
                                     increment_user_otp_count(owner_id)
                                     save_db()
@@ -5610,7 +5804,7 @@ def voltx_sms_listener():
                                         update_balance(owner_id, reward)
                                         inbox_kb.append([{"text": f"Added {reward} tk", "icon_custom_emoji_id": "5420396762189831222", "callback_data": "ignore", "style": "primary"}])
                                     
-                                    send_message(owner_id, inbox_msg, reply_markup={"inline_keyboard": inbox_kb})
+                                    send_message(owner_id, inbox_msg, reply_markup={"inline_keyboard": inbox_kb}, effect_id=HEART_EFFECT_ID)
                                     
                                     increment_user_otp_count(owner_id)
                                     save_db()
@@ -5672,7 +5866,7 @@ def process_api_otp(label, num, msg_text, extra_id=""):
     if reward > 0:
         update_balance(owner_id, reward)
         inbox_kb.append([{"text": f"Added {reward} tk", "icon_custom_emoji_id": "5420396762189831222", "callback_data": "ignore", "style": "primary"}])
-    send_message(owner_id, inbox_msg, reply_markup={"inline_keyboard": inbox_kb})
+    send_message(owner_id, inbox_msg, reply_markup={"inline_keyboard": inbox_kb}, effect_id=HEART_EFFECT_ID)
     increment_user_otp_count(owner_id)
     save_db()
 
